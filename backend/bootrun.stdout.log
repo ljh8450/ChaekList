@@ -1,0 +1,34 @@
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :resolveMainClassName UP-TO-DATE
+
+> Task :bootRun
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.13)
+
+2026-04-24T00:05:17.999+09:00  INFO 4756 --- [chaeklist] [  restartedMain] c.e.chaeklist.ChaeklistApplication       : Starting ChaeklistApplication using Java 21.0.9 with PID 4756 (C:\ChaekList\backend\build\classes\java\main started by 이정환 in C:\ChaekList\backend)
+2026-04-24T00:05:18.002+09:00  INFO 4756 --- [chaeklist] [  restartedMain] c.e.chaeklist.ChaeklistApplication       : No active profile set, falling back to 1 default profile: "default"
+2026-04-24T00:05:18.091+09:00  INFO 4756 --- [chaeklist] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-04-24T00:05:18.092+09:00  INFO 4756 --- [chaeklist] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-04-24T00:05:19.412+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-04-24T00:05:19.433+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-04-24T00:05:19.433+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.53]
+2026-04-24T00:05:19.489+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-04-24T00:05:19.491+09:00  INFO 4756 --- [chaeklist] [  restartedMain] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1398 ms
+2026-04-24T00:05:19.968+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.s.b.d.a.OptionalLiveReloadServer       : LiveReload server is running on port 35729
+2026-04-24T00:05:20.017+09:00  INFO 4756 --- [chaeklist] [  restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-04-24T00:05:20.025+09:00  INFO 4756 --- [chaeklist] [  restartedMain] c.e.chaeklist.ChaeklistApplication       : Started ChaeklistApplication in 2.632 seconds (process running for 3.195)
+2026-04-24T00:05:30.575+09:00  INFO 4756 --- [chaeklist] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-04-24T00:05:30.575+09:00  INFO 4756 --- [chaeklist] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-04-24T00:05:30.578+09:00  INFO 4756 --- [chaeklist] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 3 ms
+
+> Task :bootRun FAILED
+4 actionable tasks: 1 executed, 3 up-to-date
