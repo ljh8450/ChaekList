@@ -3,11 +3,14 @@ package com.example.chaeklist;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -16,13 +19,14 @@ public class AuthService {
 	private static final int MIN_PASSWORD_LENGTH = 8;
 	private static final int MAX_NICKNAME_LENGTH = 50;
 
-	private final UserAccountRepository userAccountRepository;
+	private final AtomicLong nextId = new AtomicLong(1);
+	private final Map<String, UserAccount> usersByEmail = new ConcurrentHashMap<>();
+	private final Map<String, Long> userIdsByNickname = new ConcurrentHashMap<>();
 
-	public AuthService(UserAccountRepository userAccountRepository) {
-		this.userAccountRepository = userAccountRepository;
+	public AuthService() {
+		createUser("reader@readpick.kr", "quiet-reader", "readpick123");
 	}
 
-	@Transactional
 	public AuthResponse signup(SignupRequest request) {
 		String email = normalizeEmail(request.email());
 		String nickname = normalizeNickname(request.nickname());
@@ -32,19 +36,18 @@ public class AuthService {
 		validateNickname(nickname);
 		validatePassword(password);
 
-		if (userAccountRepository.existsByEmail(email)) {
+		if (usersByEmail.containsKey(email)) {
 			throw new AuthException("이미 가입된 이메일입니다.");
 		}
 
-		if (userAccountRepository.existsByNickname(nickname)) {
+		if (userIdsByNickname.containsKey(nickname)) {
 			throw new AuthException("이미 사용 중인 닉네임입니다.");
 		}
 
-		UserAccountEntity user = createUser(email, nickname, password);
+		UserAccount user = createUser(email, nickname, password);
 		return AuthResponse.from(user);
 	}
 
-	@Transactional(readOnly = true)
 	public AuthResponse login(LoginRequest request) {
 		String email = normalizeEmail(request.email());
 		String password = normalizePassword(request.password());
@@ -52,21 +55,25 @@ public class AuthService {
 		validateEmail(email);
 		validatePassword(password);
 
-		UserAccountEntity user = userAccountRepository.findByEmail(email).orElse(null);
-		if (user == null || !user.getPasswordHash().equals(hashPassword(password))) {
+		UserAccount user = usersByEmail.get(email);
+		if (user == null || !user.passwordHash().equals(hashPassword(password))) {
 			throw new AuthException("이메일 또는 비밀번호가 올바르지 않습니다.");
 		}
 
-		if (!"ACTIVE".equals(user.getStatus())) {
+		if (!"ACTIVE".equals(user.status())) {
 			throw new AuthException("활성 상태의 계정만 로그인할 수 있습니다.");
 		}
 
 		return AuthResponse.from(user);
 	}
 
-	private UserAccountEntity createUser(String email, String nickname, String password) {
-		UserAccountEntity user = new UserAccountEntity(email, nickname, hashPassword(password), "ACTIVE");
-		return userAccountRepository.save(user);
+	private UserAccount createUser(String email, String nickname, String password) {
+		long id = nextId.getAndIncrement();
+		LocalDateTime now = LocalDateTime.now();
+		UserAccount user = new UserAccount(id, email, nickname, hashPassword(password), "ACTIVE", now, now);
+		usersByEmail.put(email, user);
+		userIdsByNickname.put(nickname, id);
+		return user;
 	}
 
 	private void validateEmail(String email) {
