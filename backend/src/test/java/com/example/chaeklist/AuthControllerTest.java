@@ -67,50 +67,28 @@ class AuthControllerTest {
 	}
 
 	@Test
-	void logsInSignedUpUser() throws Exception {
-		mockMvc.perform(post("/api/auth/signup")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "email": "login-reader@readpick.kr",
-								  "nickname": "login-reader",
-								  "password": "readpick123"
-								}
-								"""))
-				.andExpect(status().isOk());
-
+	void logsInSeededDemoUser() throws Exception {
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "login-reader@readpick.kr",
+								  "email": "reader@readpick.kr",
 								  "password": "readpick123"
 								}
 								"""))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.email", is("login-reader@readpick.kr")))
-				.andExpect(jsonPath("$.nickname", is("login-reader")))
+				.andExpect(jsonPath("$.email", is("reader@readpick.kr")))
+				.andExpect(jsonPath("$.nickname", is("quiet-reader")))
 				.andExpect(jsonPath("$.status", is("ACTIVE")));
 	}
 
 	@Test
 	void rejectsInvalidLogin() throws Exception {
-		mockMvc.perform(post("/api/auth/signup")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "email": "wrong-password-reader@readpick.kr",
-								  "nickname": "wrong-password-reader",
-								  "password": "readpick123"
-								}
-								"""))
-				.andExpect(status().isOk());
-
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "wrong-password-reader@readpick.kr",
+								  "email": "reader@readpick.kr",
 								  "password": "wrong-password"
 								}
 								"""))

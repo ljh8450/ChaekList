@@ -7,7 +7,7 @@ public record AuthResponse(
 		String status
 ) {
 
-	static AuthResponse from(UserAccountEntity user) {
-		return new AuthResponse(user.getId(), user.getEmail(), user.getNickname(), user.getStatus());
+	static AuthResponse from(UserAccount user) {
+		return new AuthResponse(user.id(), user.email(), user.nickname(), user.status());
 	}
 }
