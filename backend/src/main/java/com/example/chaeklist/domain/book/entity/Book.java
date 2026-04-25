@@ -79,6 +79,14 @@ public class Book {
 	)
 	private Set<Category> categories = new LinkedHashSet<>();
 
+	@ManyToMany(fetch = FetchType.EAGER)
+	@JoinTable(
+			name = "book_keywords",
+			joinColumns = @JoinColumn(name = "book_id"),
+			inverseJoinColumns = @JoinColumn(name = "keyword_id")
+	)
+	private Set<Keyword> keywords = new LinkedHashSet<>();
+
 	protected Book() {
 	}
 
@@ -117,7 +125,18 @@ public class Book {
 	}
 
 	public String recommendationReason() {
-		return "DB에 저장된 교양 도서 데이터를 기준으로 표시합니다.";
+		String category = category();
+		List<String> keywordNames = keywords();
+
+		if (!keywordNames.isEmpty() && !"미분류".equals(category)) {
+			return keywordNames.getFirst() + " 키워드와 관련된 " + category + " 분야 교양 도서입니다.";
+		}
+
+		if (!"미분류".equals(category)) {
+			return "최근 " + category + " 분야에서 교양 필터를 통과해 추천됩니다.";
+		}
+
+		return "교양 필터를 통과한 도서로 추천됩니다.";
 	}
 
 	public String views() {
@@ -133,6 +152,9 @@ public class Book {
 	}
 
 	public List<String> keywords() {
-		return List.of();
+		return keywords.stream()
+				.map(Keyword::name)
+				.sorted()
+				.toList();
 	}
 }

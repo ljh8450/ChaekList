@@ -1,9 +1,16 @@
 import { Link } from "react-router-dom";
 
 export default function BookCard({ book, rank, variant = "default" }) {
+<<<<<<< HEAD
+  const coverClass = book.cover ?? "bg-[#1E2A38]";
+  const growth = book.growth ?? book.growthRate;
+  const views = book.views ?? "0";
+  const saves = book.saves ?? 0;
+=======
   const displayRank = rank ?? book.rankPosition;
   const growth = book.growth ?? book.growthRate;
   const cover = book.cover ?? "bg-[#1E2A38]";
+>>>>>>> origin/develop
 
   return (
     <Link
@@ -12,7 +19,11 @@ export default function BookCard({ book, rank, variant = "default" }) {
     >
       <div className="flex gap-4">
         <div
+<<<<<<< HEAD
+          className={`flex h-32 w-24 shrink-0 items-end rounded-md ${coverClass} p-3 text-xs font-semibold text-white shadow-sm`}
+=======
           className={`flex h-32 w-24 shrink-0 items-end rounded-md ${cover} p-3 text-xs font-semibold text-white shadow-sm`}
+>>>>>>> origin/develop
         >
           {displayRank ? `TOP ${displayRank}` : book.category}
         </div>
@@ -25,8 +36,13 @@ export default function BookCard({ book, rank, variant = "default" }) {
           <p className="mt-1 text-sm text-[#6B7280]">{book.author}</p>
           <p className="mt-3 text-xs font-medium text-[#4CAF50]">{book.tag}</p>
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#6B7280]">
+<<<<<<< HEAD
+            <span>조회 {views}</span>
+            <span>저장 {saves}</span>
+=======
             <span>조회 {book.views}</span>
             <span>찜 {book.saves}</span>
+>>>>>>> origin/develop
             {variant === "trending" && growth ? <span className="font-bold text-[#F59E0B]">{growth}</span> : null}
           </div>
         </div>
