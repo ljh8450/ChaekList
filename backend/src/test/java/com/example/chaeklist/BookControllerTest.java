@@ -16,7 +16,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -27,6 +29,9 @@ class BookControllerTest {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	@Test
 	void returnsPublicHome() throws Exception {
@@ -80,6 +85,40 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void returnsBookDetailWithRankedSimilarBooksAndRecommendationReason() throws Exception {
+		insertCategory(101, "경제");
+		insertKeyword(201, "투자");
+		insertKeyword(202, "습관");
+		insertBook(301, "기준 도서", true);
+		insertBook(302, "공유 키워드 도서", true);
+		insertBook(303, "일반 후보 1", true);
+		insertBook(304, "일반 후보 2", true);
+		insertBook(305, "일반 후보 3", true);
+		insertBook(306, "필터 제외 도서", false);
+		insertBookCategory(301, 101);
+		insertBookCategory(302, 101);
+		insertBookCategory(303, 101);
+		insertBookCategory(304, 101);
+		insertBookCategory(305, 101);
+		insertBookCategory(306, 101);
+		insertBookKeyword(301, 201);
+		insertBookKeyword(302, 201);
+		insertBookKeyword(303, 202);
+
+		mockMvc.perform(get("/api/books/{bookId}", "301"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is("301")))
+				.andExpect(jsonPath("$.recommendationReason", is("투자 키워드와 관련된 경제 분야 교양 도서입니다.")))
+				.andExpect(jsonPath("$.keywords", hasSize(1)))
+				.andExpect(jsonPath("$.keywords[0]", is("투자")))
+				.andExpect(jsonPath("$.similarBooks", hasSize(3)))
+				.andExpect(jsonPath("$.similarBooks[0].id", is("302")))
+				.andExpect(jsonPath("$.similarBooks[?(@.id == '301')]", hasSize(0)))
+				.andExpect(jsonPath("$.similarBooks[?(@.id == '306')]", hasSize(0)));
+	}
+
+	@Test
 	void rejectsPersonalHomeWithoutBearerToken() throws Exception {
 		mockMvc.perform(get("/api/me/home"))
 				.andExpect(status().isUnauthorized())
@@ -128,5 +167,42 @@ class BookControllerTest {
 
 		JsonNode response = objectMapper.readTree(responseBody);
 		return response.get("accessToken").asText();
+	}
+
+	private void insertCategory(long id, String name) {
+		jdbcTemplate.update("""
+				INSERT INTO categories (id, name, slug, display_order, is_active, created_at, updated_at)
+				VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, name, "category-" + id, 1);
+	}
+
+	private void insertKeyword(long id, String name) {
+		jdbcTemplate.update("""
+				INSERT INTO keywords (id, name, keyword_type, created_at)
+				VALUES (?, ?, 'GENERAL', CURRENT_TIMESTAMP)
+				""", id, name);
+	}
+
+	private void insertBook(long id, String title, boolean generalEligible) {
+		jdbcTemplate.update("""
+				INSERT INTO books (
+					id, title, author, description, is_general_eligible, filter_status, created_at, updated_at
+				)
+				VALUES (?, ?, '테스트 저자', '상세 설명', ?, 'INCLUDED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, title, generalEligible);
+	}
+
+	private void insertBookCategory(long bookId, long categoryId) {
+		jdbcTemplate.update("""
+				INSERT INTO book_categories (book_id, category_id)
+				VALUES (?, ?)
+				""", bookId, categoryId);
+	}
+
+	private void insertBookKeyword(long bookId, long keywordId) {
+		jdbcTemplate.update("""
+				INSERT INTO book_keywords (book_id, keyword_id)
+				VALUES (?, ?)
+				""", bookId, keywordId);
 	}
 }

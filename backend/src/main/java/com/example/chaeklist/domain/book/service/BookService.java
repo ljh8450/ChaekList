@@ -1,5 +1,6 @@
 package com.example.chaeklist.domain.book.service;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -20,6 +21,8 @@ import org.springframework.stereotype.Service;
 public class BookService {
 
 	private static final Set<String> PERIODS = Set.of("daily", "weekly", "monthly");
+	private static final int SIMILAR_BOOK_LIMIT = 3;
+	private static final int SIMILAR_BOOK_CANDIDATE_LIMIT = 50;
 
 	private final BookRepository bookRepository;
 	private final CategoryRepository categoryRepository;
@@ -70,10 +73,40 @@ public class BookService {
 		Long id = parseBookId(bookId);
 		Book book = bookRepository.findByIdAndGeneralEligibleTrue(id)
 				.orElseThrow(() -> new BookNotFoundException("Book not found."));
-		List<Book> similarBooks = "미분류".equals(book.category())
-				? List.of()
-				: bookRepository.findByCategoriesNameAndGeneralEligibleTrueAndIdNot(book.category(), book.numericId(), pageById(3));
+		List<Book> similarBooks = findSimilarBooks(book);
 		return BookDetailResponse.from(book, similarBooks);
+	}
+
+	private List<Book> findSimilarBooks(Book book) {
+		if ("미분류".equals(book.category())) {
+			return List.of();
+		}
+
+		Set<String> keywords = new HashSet<>(book.keywords());
+		return bookRepository.findByCategoriesNameAndGeneralEligibleTrueAndIdNot(
+						book.category(),
+						book.numericId(),
+						pageById(SIMILAR_BOOK_CANDIDATE_LIMIT)
+				).stream()
+				.sorted((first, second) -> {
+					int keywordComparison = Integer.compare(sharedKeywordCount(second, keywords), sharedKeywordCount(first, keywords));
+					if (keywordComparison != 0) {
+						return keywordComparison;
+					}
+					return Long.compare(second.numericId(), first.numericId());
+				})
+				.limit(SIMILAR_BOOK_LIMIT)
+				.toList();
+	}
+
+	private int sharedKeywordCount(Book book, Set<String> keywords) {
+		if (keywords.isEmpty()) {
+			return 0;
+		}
+
+		return (int) book.keywords().stream()
+				.filter(keywords::contains)
+				.count();
 	}
 
 	private HomeResponse createHomeResponse(boolean personalized, Optional<Book> recommendation) {
