@@ -3,7 +3,6 @@ package com.example.chaeklist.domain.auth.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -28,7 +27,9 @@ public class AuthService {
 	public AuthService(TokenService tokenService, UserAccountRepository userAccountRepository) {
 		this.tokenService = tokenService;
 		this.userAccountRepository = userAccountRepository;
-		createUser("reader@chaeklist.kr", "quiet-reader", "chaeklist123");
+		if (!userAccountRepository.existsByEmail("reader@chaeklist.kr")) {
+			createUser("reader@chaeklist.kr", "quiet-reader", "chaeklist123");
+		}
 	}
 
 	public AuthResponse signup(SignupRequest request) {
@@ -73,9 +74,7 @@ public class AuthService {
 	}
 
 	private UserAccount createUser(String email, String nickname, String password) {
-		long id = userAccountRepository.nextId();
-		LocalDateTime now = LocalDateTime.now();
-		UserAccount user = new UserAccount(id, email, nickname, hashPassword(password), "ACTIVE", now, now);
+		UserAccount user = new UserAccount(email, nickname, hashPassword(password), "ACTIVE");
 		return userAccountRepository.save(user);
 	}
 

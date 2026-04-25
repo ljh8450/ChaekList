@@ -100,6 +100,14 @@ class BookControllerTest {
 	}
 
 	@Test
+	void rejectsPersonalHomeWithInvalidBearerToken() throws Exception {
+		mockMvc.perform(get("/api/me/home")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message", is("Invalid bearer token.")));
+	}
+
+	@Test
 	void returnsPersonalHomeWithAccessToken() throws Exception {
 		String accessToken = loginAndExtractAccessToken();
 

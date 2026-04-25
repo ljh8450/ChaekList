@@ -1,4 +1,6 @@
 /build/
 /.gradle/
 /.gradle-user-home/
+/data/
+.env
 *.log

@@ -107,7 +107,11 @@ public class TokenService {
 	}
 
 	private String decode(String value) {
-		return new String(BASE64_URL_DECODER.decode(value), StandardCharsets.UTF_8);
+		try {
+			return new String(BASE64_URL_DECODER.decode(value), StandardCharsets.UTF_8);
+		} catch (IllegalArgumentException exception) {
+			throw new TokenException("Invalid bearer token payload.");
+		}
 	}
 
 	private String sign(String value) {
