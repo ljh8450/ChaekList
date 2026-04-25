@@ -10,6 +10,8 @@ import com.example.chaeklist.domain.book.dto.BookSummaryResponse;
 import com.example.chaeklist.domain.book.dto.CategoryRankingResponse;
 import com.example.chaeklist.domain.book.dto.HomeResponse;
 import com.example.chaeklist.domain.book.entity.Book;
+import com.example.chaeklist.domain.book.entity.BookRankingSnapshot;
+import com.example.chaeklist.domain.book.repository.BookRankingSnapshotRepository;
 import com.example.chaeklist.domain.book.repository.BookRepository;
 import com.example.chaeklist.domain.book.repository.CategoryRepository;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
@@ -25,10 +27,16 @@ public class BookService {
 	private static final int SIMILAR_BOOK_CANDIDATE_LIMIT = 50;
 
 	private final BookRepository bookRepository;
+	private final BookRankingSnapshotRepository bookRankingSnapshotRepository;
 	private final CategoryRepository categoryRepository;
 
-	public BookService(BookRepository bookRepository, CategoryRepository categoryRepository) {
+	public BookService(
+			BookRepository bookRepository,
+			BookRankingSnapshotRepository bookRankingSnapshotRepository,
+			CategoryRepository categoryRepository
+	) {
 		this.bookRepository = bookRepository;
+		this.bookRankingSnapshotRepository = bookRankingSnapshotRepository;
 		this.categoryRepository = categoryRepository;
 	}
 
@@ -44,13 +52,13 @@ public class BookService {
 	public List<BookSummaryResponse> getRankings(String category, String period, int limit) {
 		validateCategory(category, true);
 		validatePeriod(period);
-		return findRanking(category, normalizeLimit(limit)).stream()
+		return findRanking(category, period, normalizeLimit(limit)).stream()
 				.map(BookSummaryResponse::from)
 				.toList();
 	}
 
 	public List<BookSummaryResponse> getTrending(int limit) {
-		return bookRepository.findByGeneralEligibleTrue(pageById(normalizeLimit(limit))).stream()
+		return bookRankingSnapshotRepository.findLatestTrending(normalizePeriod("weekly"), page(normalizeLimit(limit))).stream()
 				.map(BookSummaryResponse::from)
 				.toList();
 	}
@@ -64,7 +72,7 @@ public class BookService {
 	public List<BookSummaryResponse> getCategoryRankings(String category, String period, int limit) {
 		validateCategory(category, false);
 		validatePeriod(period);
-		return findRanking(category, normalizeLimit(limit)).stream()
+		return findRanking(category, period, normalizeLimit(limit)).stream()
 				.map(BookSummaryResponse::from)
 				.toList();
 	}
@@ -113,25 +121,34 @@ public class BookService {
 		return new HomeResponse(
 				personalized,
 				recommendation.map(BookSummaryResponse::from).orElse(null),
-				findRanking("전체", 10).stream().map(BookSummaryResponse::from).toList(),
-				bookRepository.findByGeneralEligibleTrue(pageById(10)).stream().map(BookSummaryResponse::from).toList(),
+				findRanking("전체", "weekly", 10).stream().map(BookSummaryResponse::from).toList(),
+				bookRankingSnapshotRepository.findLatestTrending(normalizePeriod("weekly"), page(10)).stream()
+						.map(BookSummaryResponse::from)
+						.toList(),
 				getCategories().stream()
 						.map(category -> new CategoryRankingResponse(
 								category,
-								findRanking(category, 5).stream().map(BookSummaryResponse::from).toList()))
+								findRanking(category, "weekly", 5).stream().map(BookSummaryResponse::from).toList()))
 						.toList()
 		);
 	}
 
 	private Optional<Book> getDefaultRecommendation() {
-		return findRanking("전체", 1).stream().findFirst();
+		return findRanking("전체", "weekly", 1).stream()
+				.map(BookRankingSnapshot::book)
+				.findFirst();
 	}
 
-	private List<Book> findRanking(String category, int limit) {
+	private List<BookRankingSnapshot> findRanking(String category, String period, int limit) {
+		String normalizedPeriod = normalizePeriod(period);
 		if ("전체".equals(category)) {
-			return bookRepository.findByGeneralEligibleTrue(pageById(limit));
+			return bookRankingSnapshotRepository.findLatestOverallRankings(normalizedPeriod, page(limit));
 		}
-		return bookRepository.findByCategoriesNameAndGeneralEligibleTrue(category, pageById(limit));
+		return bookRankingSnapshotRepository.findLatestCategoryRankings(category, normalizedPeriod, page(limit));
+	}
+
+	private PageRequest page(int limit) {
+		return PageRequest.of(0, limit);
 	}
 
 	private PageRequest pageById(int limit) {
@@ -159,6 +176,10 @@ public class BookService {
 		if (!PERIODS.contains(period)) {
 			throw new BookRequestException("Unsupported period.");
 		}
+	}
+
+	private String normalizePeriod(String period) {
+		return period.toUpperCase();
 	}
 
 	private Long parseBookId(String bookId) {
