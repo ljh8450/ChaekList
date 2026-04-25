@@ -1,7 +1,11 @@
-package com.example.chaeklist;
+package com.example.chaeklist.domain.auth.controller;
 
 import java.util.Map;
 
+import com.example.chaeklist.domain.auth.dto.AuthResponse;
+import com.example.chaeklist.domain.auth.dto.LoginRequest;
+import com.example.chaeklist.domain.auth.dto.SignupRequest;
+import com.example.chaeklist.domain.auth.service.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

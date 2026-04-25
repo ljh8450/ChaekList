@@ -1,4 +1,4 @@
-package com.example.chaeklist;
+package com.example.chaeklist.domain.auth.entity;
 
 import java.time.LocalDateTime;
 

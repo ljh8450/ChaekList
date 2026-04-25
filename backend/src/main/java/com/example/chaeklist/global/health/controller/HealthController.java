@@ -1,4 +1,4 @@
-package com.example.chaeklist;
+package com.example.chaeklist.global.health.controller;
 
 import java.util.Map;
 

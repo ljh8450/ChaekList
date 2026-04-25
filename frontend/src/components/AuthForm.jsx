@@ -79,8 +79,8 @@ export default function AuthForm({ mode }) {
     setForm({
       email: demoUser.email,
       nickname: demoUser.nickname,
-      password: "readpick123",
-      passwordConfirm: "readpick123",
+      password: "chaeklist123",
+      passwordConfirm: "chaeklist123",
     });
     setFieldError("");
     setServerError("");
@@ -88,7 +88,7 @@ export default function AuthForm({ mode }) {
   }
 
   function canUseDemoLogin() {
-    return form.email.trim().toLowerCase() === demoUser.email && form.password === "readpick123";
+    return form.email.trim().toLowerCase() === demoUser.email && form.password === "chaeklist123";
   }
 
   async function submitAuth(event) {

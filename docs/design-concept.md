@@ -1,8 +1,8 @@
-# ReadPick Design Concept
+# ChaekList Design Concept
 
 ## Purpose
 
-이 문서는 ChaekList/ReadPick 화면을 설계하고 구현할 때 반복해서 참고할 디자인 기준이다.
+이 문서는 ChaekList 화면을 설계하고 구현할 때 반복해서 참고할 디자인 기준이다.
 회원가입/로그인 화면뿐 아니라 홈, 랭킹, 책 상세, 모바일 화면까지 같은 톤과 UX 원칙을 유지한다.
 
 ## Core Tone
@@ -56,7 +56,7 @@ Figma에서는 아래 텍스트 스타일을 등록한다.
 Figma 파일은 아래 페이지 구조를 기준으로 나눈다.
 
 ```text
-ReadPick Design
+ChaekList Design
 ├── Design System
 ├── Components
 ├── Desktop Screens
