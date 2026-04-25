@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
 
 export default function BookCard({ book, rank, variant = "default" }) {
+  const displayRank = rank ?? book.rankPosition;
+  const growth = book.growth ?? book.growthRate;
+  const cover = book.cover ?? "bg-[#1E2A38]";
+
   return (
     <Link
       className="group block rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#1E2A38]"
@@ -8,13 +12,13 @@ export default function BookCard({ book, rank, variant = "default" }) {
     >
       <div className="flex gap-4">
         <div
-          className={`flex h-32 w-24 shrink-0 items-end rounded-md ${book.cover} p-3 text-xs font-semibold text-white shadow-sm`}
+          className={`flex h-32 w-24 shrink-0 items-end rounded-md ${cover} p-3 text-xs font-semibold text-white shadow-sm`}
         >
-          {rank ? `TOP ${rank}` : book.category}
+          {displayRank ? `TOP ${displayRank}` : book.category}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            {rank ? <span className="text-sm font-bold text-[#F59E0B]">{rank}</span> : null}
+            {displayRank ? <span className="text-sm font-bold text-[#F59E0B]">{displayRank}</span> : null}
             <span className="rounded-full border border-[#E5E7EB] px-2 py-1 text-xs text-[#6B7280]">{book.category}</span>
           </div>
           <h3 className="mt-3 line-clamp-2 text-base font-bold text-[#1E2A38] group-hover:underline">{book.title}</h3>
@@ -23,7 +27,7 @@ export default function BookCard({ book, rank, variant = "default" }) {
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#6B7280]">
             <span>조회 {book.views}</span>
             <span>찜 {book.saves}</span>
-            {variant === "trending" ? <span className="font-bold text-[#F59E0B]">{book.growth}</span> : null}
+            {variant === "trending" && growth ? <span className="font-bold text-[#F59E0B]">{growth}</span> : null}
           </div>
         </div>
       </div>
