@@ -179,7 +179,7 @@ CREATE TABLE book_ranking_snapshots (
   CONSTRAINT fk_book_ranking_snapshots_category
     FOREIGN KEY (category_id) REFERENCES categories (id)
     ON DELETE SET NULL,
-  CONSTRAINT chk_book_ranking_period CHECK (ranking_period IN ('DAILY', 'WEEKLY'))
+  CONSTRAINT chk_book_ranking_period CHECK (ranking_period IN ('DAILY', 'WEEKLY', 'MONTHLY'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE trend_keywords (
