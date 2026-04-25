@@ -1,6 +1,9 @@
 package com.example.chaeklist;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.emptyString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,25 +29,28 @@ class AuthControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "new-reader@readpick.kr",
+								  "email": "new-reader@chaeklist.kr",
 								  "nickname": "new-reader",
-								  "password": "readpick123"
+								  "password": "chaeklist123"
 								}
 								"""))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-				.andExpect(jsonPath("$.email", is("new-reader@readpick.kr")))
+				.andExpect(jsonPath("$.email", is("new-reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.nickname", is("new-reader")))
-				.andExpect(jsonPath("$.status", is("ACTIVE")));
+				.andExpect(jsonPath("$.status", is("ACTIVE")))
+				.andExpect(jsonPath("$.tokenType", is("Bearer")))
+				.andExpect(jsonPath("$.accessToken", not(emptyString())))
+				.andExpect(jsonPath("$.refreshToken", not(emptyString())));
 	}
 
 	@Test
 	void rejectsDuplicateEmail() throws Exception {
 		String payload = """
 				{
-				  "email": "duplicate@readpick.kr",
+				  "email": "duplicate@chaeklist.kr",
 				  "nickname": "duplicate-one",
-				  "password": "readpick123"
+				  "password": "chaeklist123"
 				}
 				""";
 
@@ -57,9 +63,9 @@ class AuthControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "duplicate@readpick.kr",
+								  "email": "duplicate@chaeklist.kr",
 								  "nickname": "duplicate-two",
-								  "password": "readpick123"
+								  "password": "chaeklist123"
 								}
 								"""))
 				.andExpect(status().isBadRequest())
@@ -72,14 +78,26 @@ class AuthControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "reader@readpick.kr",
-								  "password": "readpick123"
+								  "email": "reader@chaeklist.kr",
+								  "password": "chaeklist123"
 								}
 								"""))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.email", is("reader@readpick.kr")))
+				.andExpect(jsonPath("$.email", is("reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.nickname", is("quiet-reader")))
-				.andExpect(jsonPath("$.status", is("ACTIVE")));
+				.andExpect(jsonPath("$.status", is("ACTIVE")))
+				.andExpect(jsonPath("$.tokenType", is("Bearer")))
+				.andExpect(jsonPath("$.accessToken", not(emptyString())))
+				.andExpect(jsonPath("$.refreshToken", not(emptyString())));
+	}
+
+	@Test
+	void exposesBearerAuthInOpenApiDocs() throws Exception {
+		mockMvc.perform(get("/v3/api-docs"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type", is("http")))
+				.andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme", is("bearer")))
+				.andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat", is("JWT")));
 	}
 
 	@Test
@@ -88,7 +106,7 @@ class AuthControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "email": "reader@readpick.kr",
+								  "email": "reader@chaeklist.kr",
 								  "password": "wrong-password"
 								}
 								"""))
