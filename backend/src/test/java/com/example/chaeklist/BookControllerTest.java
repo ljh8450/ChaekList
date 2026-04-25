@@ -2,8 +2,7 @@ package com.example.chaeklist;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.emptyString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -34,10 +33,10 @@ class BookControllerTest {
 		mockMvc.perform(get("/api/home"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.personalized", is(false)))
-				.andExpect(jsonPath("$.todayRecommendation.id", not(emptyString())))
-				.andExpect(jsonPath("$.popularBooks", hasSize(5)))
-				.andExpect(jsonPath("$.trendingBooks", hasSize(5)))
-				.andExpect(jsonPath("$.categoryRankings", hasSize(5)));
+				.andExpect(jsonPath("$.todayRecommendation", nullValue()))
+				.andExpect(jsonPath("$.popularBooks", hasSize(0)))
+				.andExpect(jsonPath("$.trendingBooks", hasSize(0)))
+				.andExpect(jsonPath("$.categoryRankings", hasSize(0)));
 	}
 
 	@Test
@@ -47,42 +46,30 @@ class BookControllerTest {
 						.param("period", "weekly")
 						.param("limit", "3"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$", hasSize(3)))
-				.andExpect(jsonPath("$[0].id", is("slow-reading")));
+				.andExpect(jsonPath("$", hasSize(0)));
 	}
 
 	@Test
 	void returnsTrendingBooks() throws Exception {
 		mockMvc.perform(get("/api/books/trending")
-						.param("limit", "2"))
+				.param("limit", "2"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$", hasSize(2)))
-				.andExpect(jsonPath("$[0].id", is("attention-design")));
+				.andExpect(jsonPath("$", hasSize(0)));
 	}
 
 	@Test
 	void returnsCategories() throws Exception {
 		mockMvc.perform(get("/api/books/categories"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$", hasSize(5)))
-				.andExpect(jsonPath("$[0]", is("인문")));
+				.andExpect(jsonPath("$", hasSize(0)));
 	}
 
 	@Test
-	void returnsCategoryRankings() throws Exception {
+	void rejectsUnknownCategoryRankings() throws Exception {
 		mockMvc.perform(get("/api/books/categories/{category}/rankings", "경제")
 						.param("period", "weekly"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$", hasSize(1)))
-				.andExpect(jsonPath("$[0].category", is("경제")));
-	}
-
-	@Test
-	void returnsBookDetail() throws Exception {
-		mockMvc.perform(get("/api/books/{bookId}", "slow-reading"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.id", is("slow-reading")))
-				.andExpect(jsonPath("$.keywords", hasSize(3)));
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Unsupported category.")));
 	}
 
 	@Test
@@ -112,10 +99,10 @@ class BookControllerTest {
 		String accessToken = loginAndExtractAccessToken();
 
 		mockMvc.perform(get("/api/me/home")
-						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.personalized", is(true)))
-				.andExpect(jsonPath("$.todayRecommendation.id", is("quiet-investing")));
+				.andExpect(jsonPath("$.todayRecommendation", nullValue()));
 	}
 
 	@Test

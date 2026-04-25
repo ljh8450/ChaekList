@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "책 상세 응답")
 public record BookDetailResponse(
-		@Schema(description = "책 ID", example = "slow-reading")
+		@Schema(description = "책 ID", example = "1")
 		String id,
 		@Schema(description = "제목", example = "느리게 읽는 힘")
 		String title,
