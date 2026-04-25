@@ -16,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -50,11 +51,63 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Sql(scripts = "/ranking-test-data.sql")
+	@Sql(scripts = "/ranking-test-cleanup.sql", executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+	void returnsLatestSnapshotRankings() throws Exception {
+		mockMvc.perform(get("/api/books/rankings")
+						.param("category", "전체")
+						.param("period", "weekly")
+						.param("limit", "3"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is("102")))
+				.andExpect(jsonPath("$[0].rankPosition", is(1)))
+				.andExpect(jsonPath("$[0].rankingPeriod", is("WEEKLY")))
+				.andExpect(jsonPath("$[0].rankDate", is("2026-04-20")))
+				.andExpect(jsonPath("$[0].title", is("조용한 투자 습관")))
+				.andExpect(jsonPath("$[0].views", is("2.4k")))
+				.andExpect(jsonPath("$[0].saves", is(120)))
+				.andExpect(jsonPath("$[0].growthRate", is("+15%")))
+				.andExpect(jsonPath("$[1].id", is("101")));
+	}
+
+	@Test
+	@Sql(scripts = "/ranking-test-data.sql")
+	@Sql(scripts = "/ranking-test-cleanup.sql", executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+	void returnsLatestCategorySnapshotRankings() throws Exception {
+		mockMvc.perform(get("/api/books/categories/{category}/rankings", "경제")
+						.param("period", "weekly")
+						.param("limit", "3"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is("102")))
+				.andExpect(jsonPath("$[0].rankPosition", is(1)))
+				.andExpect(jsonPath("$[0].rankingPeriod", is("WEEKLY")))
+				.andExpect(jsonPath("$[0].rankDate", is("2026-04-20")))
+				.andExpect(jsonPath("$[0].category", is("경제")));
+	}
+
+	@Test
 	void returnsTrendingBooks() throws Exception {
 		mockMvc.perform(get("/api/books/trending")
 				.param("limit", "2"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
+	@Sql(scripts = "/ranking-test-data.sql")
+	@Sql(scripts = "/ranking-test-cleanup.sql", executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+	void returnsTrendingBooksByLatestSnapshotGrowthRate() throws Exception {
+		mockMvc.perform(get("/api/books/trending")
+						.param("limit", "2"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is("102")))
+				.andExpect(jsonPath("$[0].rankPosition", is(1)))
+				.andExpect(jsonPath("$[0].rankingPeriod", is("WEEKLY")))
+				.andExpect(jsonPath("$[0].rankDate", is("2026-04-20")))
+				.andExpect(jsonPath("$[1].id", is("101")));
 	}
 
 	@Test
