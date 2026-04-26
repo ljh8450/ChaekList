@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
@@ -10,6 +10,8 @@ import MyPage from "./pages/MyPage";
 import RankingsPage from "./pages/RankingsPage";
 import SignupPage from "./pages/SignupPage";
 
+const AUTH_STORAGE_KEY = "chaeklist.auth";
+
 const demoUser = {
   id: 1,
   email: "reader@chaeklist.kr",
@@ -18,6 +20,23 @@ const demoUser = {
 };
 
 const AuthContext = createContext(null);
+
+function loadStoredAuth() {
+  try {
+    const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+    return storedAuth ? JSON.parse(storedAuth) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeAuthSession(session) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+}
+
+function clearAuthSession() {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+}
 
 export function useAuth() {
   const context = useContext(AuthContext);
@@ -30,8 +49,18 @@ export function useAuth() {
 }
 
 function RequireAuth({ children }) {
-  const { currentUser } = useAuth();
+  const { currentUser, isAuthReady } = useAuth();
   const location = useLocation();
+
+  if (!isAuthReady) {
+    return (
+      <section className="mx-auto w-full max-w-5xl px-5 py-8">
+        <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 text-sm text-[#6B7280] shadow-sm">
+          로그인 상태를 확인하는 중입니다.
+        </div>
+      </section>
+    );
+  }
 
   if (!currentUser) {
     return <Navigate replace state={{ from: location }} to="/login" />;
@@ -69,20 +98,76 @@ function AppRoutes() {
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [authSession, setAuthSession] = useState(() => loadStoredAuth());
+  const [isAuthReady, setIsAuthReady] = useState(() => !loadStoredAuth()?.accessToken);
+
+  useEffect(() => {
+    const storedAuth = loadStoredAuth();
+
+    if (!storedAuth?.accessToken) {
+      setIsAuthReady(true);
+      return;
+    }
+
+    let ignore = false;
+
+    async function restoreAuth() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${storedAuth.accessToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Stored token is invalid.");
+        }
+
+        const user = await response.json();
+        const restoredSession = {
+          ...storedAuth,
+          user,
+        };
+
+        if (!ignore) {
+          setAuthSession(restoredSession);
+          storeAuthSession(restoredSession);
+        }
+      } catch {
+        if (!ignore) {
+          setAuthSession(null);
+          clearAuthSession();
+        }
+      } finally {
+        if (!ignore) {
+          setIsAuthReady(true);
+        }
+      }
+    }
+
+    restoreAuth();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const authValue = useMemo(
     () => ({
-      currentUser,
+      accessToken: authSession?.accessToken ?? "",
+      currentUser: authSession?.user ?? null,
       demoUser,
-      login(user) {
-        setCurrentUser(user);
+      isAuthReady,
+      login(session) {
+        setAuthSession(session);
+        storeAuthSession(session);
       },
       logout() {
-        setCurrentUser(null);
+        setAuthSession(null);
+        clearAuthSession();
       },
     }),
-    [currentUser],
+    [authSession, isAuthReady],
   );
 
   return (
