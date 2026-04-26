@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -89,6 +90,37 @@ class AuthControllerTest {
 				.andExpect(jsonPath("$.tokenType", is("Bearer")))
 				.andExpect(jsonPath("$.accessToken", not(emptyString())))
 				.andExpect(jsonPath("$.refreshToken", not(emptyString())));
+	}
+
+	@Test
+	void returnsCurrentUserWithBearerToken() throws Exception {
+		MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "reader@chaeklist.kr",
+								  "password": "chaeklist123"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String responseBody = loginResult.getResponse().getContentAsString();
+		String accessToken = responseBody.replaceAll(".*\"accessToken\":\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(get("/api/auth/me")
+						.header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.email", is("reader@chaeklist.kr")))
+				.andExpect(jsonPath("$.nickname", is("quiet-reader")))
+				.andExpect(jsonPath("$.status", is("ACTIVE")));
+	}
+
+	@Test
+	void rejectsMeWithoutBearerToken() throws Exception {
+		mockMvc.perform(get("/api/auth/me"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message", is("Bearer token is required.")));
 	}
 
 	@Test

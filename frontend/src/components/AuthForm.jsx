@@ -37,6 +37,20 @@ function validateForm(mode, form) {
   return "";
 }
 
+function createAuthSession(data, fallbackUser) {
+  return {
+    accessToken: data.accessToken ?? "",
+    refreshToken: data.refreshToken ?? "",
+    tokenType: data.tokenType ?? "Bearer",
+    user: {
+      id: data.id ?? fallbackUser.id,
+      email: data.email ?? fallbackUser.email,
+      nickname: data.nickname ?? fallbackUser.nickname,
+      status: data.status ?? "ACTIVE",
+    },
+  };
+}
+
 export default function AuthForm({ mode }) {
   const { demoUser, login } = useAuth();
   const navigate = useNavigate();
@@ -119,16 +133,22 @@ export default function AuthForm({ mode }) {
         throw new Error(data.message ?? "요청을 처리하지 못했습니다.");
       }
 
-      login({
-        id: data.id ?? demoUser.id,
-        email: data.email ?? payload.email,
-        nickname: data.nickname ?? (form.nickname.trim() || demoUser.nickname),
-        status: data.status ?? "ACTIVE",
-      });
+      login(
+        createAuthSession(data, {
+          ...demoUser,
+          email: payload.email,
+          nickname: form.nickname.trim() || demoUser.nickname,
+        }),
+      );
       navigate(nextPath, { replace: true });
     } catch (error) {
       if (!isSignup && canUseDemoLogin()) {
-        login(demoUser);
+        login({
+          accessToken: "",
+          refreshToken: "",
+          tokenType: "Bearer",
+          user: demoUser,
+        });
         navigate(nextPath, { replace: true });
         return;
       }
@@ -147,16 +167,8 @@ export default function AuthForm({ mode }) {
           로그인하면 오늘의 추천이 더 구체적으로 바뀝니다
         </h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-[#6B7280]">
-          비로그인 상태에서도 인기 책과 랭킹은 볼 수 있습니다. 계정이 있으면 관심 분야와 저장한 책을 바탕으로 추천 이유를 함께 제공합니다.
+          계정이 있으면 관심 분야와 저장한 책을 바탕으로 추천 이유를 함께 제공합니다.
         </p>
-        <div className="mt-8 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">
-          {["추천 이유", "교양 필터", "랭킹 변화"].map((label) => (
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm" key={label}>
-              <p className="text-sm font-semibold text-[#1E2A38]">{label}</p>
-              <p className="mt-2 text-xs leading-5 text-[#6B7280]">과장 없이 필요한 정보만 정리합니다.</p>
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm sm:p-8">

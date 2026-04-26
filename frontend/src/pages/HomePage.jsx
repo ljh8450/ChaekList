@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../App";
 import BookCard from "../components/BookCard";
 import { books, categoryRankings, trendingBooks } from "../data/books";
-import { useAuth } from "../App";
 
 export default function HomePage() {
   const { currentUser } = useAuth();
@@ -12,7 +12,7 @@ export default function HomePage() {
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1.4fr_0.9fr]">
         <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-[#F59E0B]">급상승 도서</p>
-          <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">지금 사람들이 가장 많이 읽고 있는 책</h2>
+          <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">지금 사람들이 많이 읽는 책</h2>
           <div className="mt-5 space-y-3">
             {trendingBooks.slice(0, 3).map((book, index) => (
               <BookCard book={book} key={book.id} rank={index + 1} variant="trending" />
@@ -39,7 +39,7 @@ export default function HomePage() {
           </div>
           {!currentUser ? (
             <Link className="mt-5 inline-flex rounded-md bg-[#1E2A38] px-4 py-3 text-sm font-semibold text-white" to="/login">
-              로그인하고 개인화 추천 보기
+              로그인하고 개인 추천 보기
             </Link>
           ) : null}
         </div>

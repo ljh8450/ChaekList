@@ -1,4 +1,4 @@
-import { NavLink, Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../App";
 
 const navItems = [
