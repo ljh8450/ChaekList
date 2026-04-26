@@ -1,23 +1,8 @@
-<<<<<<< HEAD
-import { useMemo, useState } from "react";
-import BookCard from "../components/BookCard";
-import { books, categories } from "../data/books";
-
-export default function RankingsPage() {
-  const [selectedCategory, setSelectedCategory] = useState(categories[0]);
-  const rankingBooks = useMemo(
-    () =>
-      selectedCategory === "전체"
-        ? books
-        : books.filter((book) => book.category === selectedCategory),
-    [selectedCategory],
-  );
-=======
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { books as fallbackBooks, categories as fallbackCategories } from "../data/books";
 
-const DEFAULT_CATEGORIES = ["전체"];
-const PERIODS = [
+const periods = [
   { label: "일간", value: "daily" },
   { label: "주간", value: "weekly" },
   { label: "월간", value: "monthly" },
@@ -34,15 +19,16 @@ function formatRankDate(rankDate) {
 function normalizeRankingBook(book) {
   return {
     ...book,
-    growth: book.growthRate,
+    growth: book.growth ?? book.growthRate,
+    reason: book.reason ?? book.recommendationReason,
   };
 }
 
 export default function RankingsPage() {
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState(fallbackCategories);
   const [selectedCategory, setSelectedCategory] = useState("전체");
   const [selectedPeriod, setSelectedPeriod] = useState("weekly");
-  const [rankings, setRankings] = useState([]);
+  const [rankings, setRankings] = useState(fallbackBooks);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [isLoadingRankings, setIsLoadingRankings] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -64,9 +50,9 @@ export default function RankingsPage() {
         if (isActive) {
           setCategories(["전체", ...data]);
         }
-      } catch (error) {
+      } catch {
         if (isActive) {
-          setCategories(DEFAULT_CATEGORIES);
+          setCategories(fallbackCategories);
         }
       } finally {
         if (isActive) {
@@ -107,7 +93,9 @@ export default function RankingsPage() {
         }
       } catch (error) {
         if (isActive) {
-          setRankings([]);
+          const filteredFallback =
+            selectedCategory === "전체" ? fallbackBooks : fallbackBooks.filter((book) => book.category === selectedCategory);
+          setRankings(filteredFallback);
           setErrorMessage(error.message);
         }
       } finally {
@@ -125,11 +113,10 @@ export default function RankingsPage() {
   }, [selectedCategory, selectedPeriod]);
 
   const activePeriodLabel = useMemo(
-    () => PERIODS.find((period) => period.value === selectedPeriod)?.label ?? "주간",
+    () => periods.find((period) => period.value === selectedPeriod)?.label ?? "주간",
     [selectedPeriod],
   );
   const rankDateLabel = formatRankDate(rankings[0]?.rankDate);
->>>>>>> origin/develop
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-8">
@@ -139,12 +126,12 @@ export default function RankingsPage() {
             <p className="text-sm font-semibold text-[#F59E0B]">전체 랭킹</p>
             <h1 className="mt-2 text-3xl font-bold text-[#1E2A38]">교양 독서 기준 TOP 리스트</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#6B7280]">
-              수험서와 전공서를 제외하고 조회, 찜, 상승률을 반영한 읽을 만한 책 순위입니다.
+              수험서와 전공서를 제외하고 조회, 저장, 상승률을 반영한 읽을 만한 책 순위입니다.
             </p>
           </div>
 
           <div className="inline-flex w-full rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-1 sm:w-auto">
-            {PERIODS.map((period) => (
+            {periods.map((period) => (
               <button
                 className={`min-h-10 flex-1 rounded-md px-4 text-sm font-semibold transition sm:flex-none ${
                   selectedPeriod === period.value ? "bg-[#1E2A38] text-white shadow-sm" : "text-[#6B7280] hover:text-[#1E2A38]"
@@ -158,42 +145,6 @@ export default function RankingsPage() {
             ))}
           </div>
         </div>
-<<<<<<< HEAD
-        <div className="flex flex-wrap gap-2">
-          {categories.map((category) => {
-            const selected = category === selectedCategory;
-
-            return (
-              <button
-                aria-pressed={selected}
-                className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
-                  selected
-                    ? "border-[#1E2A38] bg-[#1E2A38] text-white"
-                    : "border-[#E5E7EB] text-[#6B7280] hover:border-[#1E2A38] hover:text-[#1E2A38]"
-                }`}
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                type="button"
-              >
-                {category}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {rankingBooks.length ? (
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {rankingBooks.map((book, index) => (
-            <BookCard book={book} key={book.id} rank={index + 1} variant="trending" />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-5 rounded-lg border border-[#E5E7EB] bg-white p-6 text-sm text-[#6B7280] shadow-sm">
-          선택한 카테고리에 표시할 책이 없습니다.
-        </div>
-      )}
-=======
 
         <div className="mt-5 flex flex-wrap gap-2">
           {categories.map((category) => (
@@ -222,8 +173,14 @@ export default function RankingsPage() {
             </p>
             <p className="mt-1 text-sm text-[#6B7280]">{rankDateLabel}</p>
           </div>
-          <p className="text-sm text-[#6B7280]">최대 20위까지 표시합니다</p>
+          <p className="text-sm text-[#6B7280]">최대 20위까지 표시합니다.</p>
         </div>
+
+        {errorMessage ? (
+          <div className="border-b border-[#E5E7EB] bg-[#F5F3EF] px-5 py-3 text-sm text-[#6B7280]">
+            API 응답을 받지 못해 임시 데이터를 표시합니다. {errorMessage}
+          </div>
+        ) : null}
 
         {isLoadingRankings ? (
           <div className="grid grid-cols-1 gap-0 divide-y divide-[#E5E7EB]">
@@ -240,21 +197,14 @@ export default function RankingsPage() {
           </div>
         ) : null}
 
-        {!isLoadingRankings && errorMessage ? (
-          <div className="p-8 text-center">
-            <p className="text-base font-bold text-[#1E2A38]">랭킹을 불러오지 못했습니다</p>
-            <p className="mt-2 text-sm text-[#6B7280]">{errorMessage}</p>
-          </div>
-        ) : null}
-
-        {!isLoadingRankings && !errorMessage && rankings.length === 0 ? (
+        {!isLoadingRankings && rankings.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-base font-bold text-[#1E2A38]">표시할 랭킹이 없습니다</p>
-            <p className="mt-2 text-sm text-[#6B7280]">선택한 카테고리와 기간의 랭킹 데이터가 준비되면 이곳에 표시됩니다.</p>
+            <p className="mt-2 text-sm text-[#6B7280]">선택한 카테고리와 기간의 데이터가 준비되면 이곳에 표시합니다.</p>
           </div>
         ) : null}
 
-        {!isLoadingRankings && !errorMessage && rankings.length > 0 ? (
+        {!isLoadingRankings && rankings.length > 0 ? (
           <ol className="divide-y divide-[#E5E7EB]">
             {rankings.map((book, index) => {
               const rank = book.rankPosition ?? index + 1;
@@ -289,10 +239,10 @@ export default function RankingsPage() {
 
                       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#6B7280]">
                         <span>조회 {book.views}</span>
-                        <span>찜 {book.saves}</span>
+                        <span>저장 {book.saves}</span>
                         <span>{formatRankDate(book.rankDate)}</span>
                       </div>
-                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#6B7280]">{book.recommendationReason}</p>
+                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#6B7280]">{book.reason}</p>
                     </div>
                   </Link>
                 </li>
@@ -301,7 +251,6 @@ export default function RankingsPage() {
           </ol>
         ) : null}
       </div>
->>>>>>> origin/develop
     </section>
   );
 }

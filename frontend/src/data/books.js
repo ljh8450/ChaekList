@@ -3,29 +3,29 @@ export const categories = ["전체", "인문", "경제", "자기계발", "소설
 export const books = [
   {
     id: "slow-reading",
-    title: "느리게 읽는 힘",
-    author: "문서연",
+    title: "느리게 읽는 법",
+    author: "문서윤",
     category: "인문",
     tag: "교양 필터 통과",
     views: "12.4k",
     saves: 842,
     growth: "+18%",
-    reason: "최근 인문 분야에서 저장 수가 빠르게 늘고 있어 추천됩니다.",
-    summary: "정보가 많은 시대에 한 문장을 깊이 읽는 감각을 되살리는 방법을 다룹니다.",
+    reason: "최근 인문 분야에서 저장 수가 빠르게 늘고 있어 추천합니다.",
+    summary: "정보가 많은 시대에 문장을 깊이 읽는 감각을 되찾는 방법을 다룹니다.",
     keywords: ["독서", "사유", "집중"],
     cover: "bg-[#1E2A38]",
   },
   {
     id: "quiet-investing",
     title: "조용한 투자 습관",
-    author: "서도윤",
+    author: "서도현",
     category: "경제",
     tag: "주간 상승",
     views: "10.1k",
     saves: 711,
     growth: "+24%",
     reason: "경제 입문 독자들이 많이 저장한 책입니다.",
-    summary: "과열된 시장 뉴스에서 벗어나 장기적인 투자 습관을 세우는 책입니다.",
+    summary: "과열된 시장 이슈에서 벗어나 장기적인 투자 습관을 세우는 책입니다.",
     keywords: ["투자", "경제", "습관"],
     cover: "bg-[#4CAF50]",
   },
@@ -73,7 +73,7 @@ export const books = [
   },
 ];
 
-export const trendingBooks = books
+export const trendingBooks = [...books]
   .filter((book) => book.growth)
   .sort((first, second) => Number(second.growth.replace(/\D/g, "")) - Number(first.growth.replace(/\D/g, "")));
 
