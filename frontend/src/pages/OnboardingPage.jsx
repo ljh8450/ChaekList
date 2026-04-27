@@ -1,23 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
-import { books, categories } from "../data/books";
-
-const fallbackCategories = categories
-  .filter((category) => category !== "전체")
-  .map((category, index) => ({
-    id: category,
-    name: category,
-    description: ["사유와 관점을 넓히는 책", "시장과 돈의 흐름을 읽는 책", "습관과 집중을 돕는 책", "이야기로 감각을 넓히는 책", "일상의 문장을 오래 붙잡는 책"][index],
-  }));
-
-const fallbackBooks = books.map((book) => ({
-  id: book.id,
-  title: book.title,
-  author: book.author,
-  category: book.category,
-  reason: book.reason,
-}));
 
 function normalizeCategory(category) {
   return {
@@ -37,19 +20,30 @@ function normalizeBook(book) {
   };
 }
 
+function getInitialCategoryIds(options, myPage) {
+  const interestIds = new Set((myPage?.interests ?? []).map((interest) => String(interest.id)));
+  return options.filter((category) => interestIds.has(String(category.id))).map((category) => category.id);
+}
+
+function getInitialBookIds(options, myPage) {
+  const readBookIds = new Set((myPage?.readBooks ?? []).map((book) => String(book.id)));
+  return options.filter((book) => readBookIds.has(String(book.id))).map((book) => book.id);
+}
+
 export default function OnboardingPage() {
   const { accessToken, logout } = useAuth();
   const navigate = useNavigate();
-  const [availableCategories, setAvailableCategories] = useState(fallbackCategories);
-  const [availableBooks, setAvailableBooks] = useState(fallbackBooks);
+  const [availableCategories, setAvailableCategories] = useState([]);
+  const [availableBooks, setAvailableBooks] = useState([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [selectedBookIds, setSelectedBookIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [canSave, setCanSave] = useState(false);
 
-  const canSubmit = selectedCategoryIds.length > 0 && selectedBookIds.length > 0 && !isSubmitting;
+  const canSubmit = canSave && selectedCategoryIds.length > 0 && selectedBookIds.length > 0 && !isSubmitting;
 
   const selectedSummary = useMemo(
     () => ({
@@ -65,6 +59,8 @@ export default function OnboardingPage() {
     async function loadOnboarding() {
       setIsLoading(true);
       setErrorMessage("");
+      setMessage("");
+      setCanSave(false);
 
       try {
         if (!accessToken) {
@@ -83,11 +79,7 @@ export default function OnboardingPage() {
         }
 
         if (statusResponse.ok) {
-          const status = await statusResponse.json();
-          if (status.completed) {
-            navigate("/mypage", { replace: true });
-            return;
-          }
+          await statusResponse.json();
         }
 
         const optionsResponse = await fetch("/api/me/onboarding-options", { headers });
@@ -99,14 +91,25 @@ export default function OnboardingPage() {
         const options = await optionsResponse.json();
         const nextCategories = (options.categories ?? options.interestCategories ?? []).map(normalizeCategory).filter((category) => category.id);
         const nextBooks = (options.books ?? options.readableBooks ?? []).map(normalizeBook).filter((book) => book.id);
+        const myPageResponse = await fetch("/api/me/mypage", { headers });
+        const myPage = myPageResponse.ok ? await myPageResponse.json() : null;
 
         if (!ignore) {
-          setAvailableCategories(nextCategories.length > 0 ? nextCategories : fallbackCategories);
-          setAvailableBooks(nextBooks.length > 0 ? nextBooks : fallbackBooks);
+          setAvailableCategories(nextCategories);
+          setAvailableBooks(nextBooks);
+          setSelectedCategoryIds(getInitialCategoryIds(nextCategories, myPage));
+          setSelectedBookIds(getInitialBookIds(nextBooks, myPage));
+          setCanSave(nextCategories.length > 0 && nextBooks.length > 0);
+          if (nextCategories.length === 0 || nextBooks.length === 0) {
+            setMessage("온보딩 선택지가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+          }
         }
       } catch {
         if (!ignore) {
-          setMessage("현재는 기본 선택지로 온보딩을 진행합니다.");
+          setAvailableCategories([]);
+          setAvailableBooks([]);
+          setCanSave(false);
+          setMessage("온보딩 선택지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
         }
       } finally {
         if (!ignore) {
@@ -139,6 +142,11 @@ export default function OnboardingPage() {
 
     if (selectedCategoryIds.length === 0) {
       setErrorMessage("관심 분야를 1개 이상 선택해 주세요.");
+      return;
+    }
+
+    if (!canSave) {
+      setErrorMessage("온보딩 선택지를 불러온 뒤 저장할 수 있습니다.");
       return;
     }
 
@@ -209,7 +217,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {availableCategories.map((category) => {
+              {availableCategories.length > 0 ? availableCategories.map((category) => {
                 const isSelected = selectedCategoryIds.includes(category.id);
 
                 return (
@@ -227,7 +235,11 @@ export default function OnboardingPage() {
                     <span className="mt-2 block text-sm leading-6 text-[#6B7280]">{category.description}</span>
                   </button>
                 );
-              })}
+              }) : (
+                <p className="rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280] md:col-span-2 xl:col-span-3">
+                  선택 가능한 관심 분야를 불러오지 못했습니다.
+                </p>
+              )}
             </div>
           </section>
 
@@ -243,7 +255,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              {availableBooks.map((book) => {
+              {availableBooks.length > 0 ? availableBooks.map((book) => {
                 const isSelected = selectedBookIds.includes(book.id);
 
                 return (
@@ -269,7 +281,11 @@ export default function OnboardingPage() {
                     <p className="mt-3 text-sm leading-6 text-[#6B7280]">{book.reason}</p>
                   </button>
                 );
-              })}
+              }) : (
+                <p className="rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280] md:col-span-2">
+                  선택 가능한 책을 불러오지 못했습니다.
+                </p>
+              )}
             </div>
           </section>
         </div>

@@ -4,6 +4,9 @@ import java.util.Map;
 
 import com.example.chaeklist.domain.auth.util.TokenService;
 import com.example.chaeklist.domain.mypage.dto.MyPageResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
+import com.example.chaeklist.domain.mypage.dto.OnboardingStatusResponse;
 import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import com.example.chaeklist.global.auth.BearerTokenResolver;
@@ -16,6 +19,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,10 +46,53 @@ public class MyPageController {
 	public MyPageResponse myPage(
 			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader
 	) {
+		AuthenticatedUser user = authenticate(authorizationHeader);
+		return myPageService.getMyPage(user);
+	}
+
+	@GetMapping("/api/me/onboarding-status")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "온보딩 완료 여부 조회", description = "users.onboarding_completed 값을 기준으로 현재 사용자의 온보딩 완료 여부를 반환합니다.")
+	@ApiResponse(responseCode = "200", description = "온보딩 상태 조회 성공")
+	@ApiResponse(responseCode = "401", description = "Bearer token 누락, 만료 또는 검증 실패")
+	public OnboardingStatusResponse onboardingStatus(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+	) {
+		AuthenticatedUser user = authenticate(authorizationHeader);
+		return myPageService.getOnboardingStatus(user);
+	}
+
+	@GetMapping("/api/me/onboarding-options")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "온보딩 선택지 조회", description = "온보딩 화면에서 선택할 활성 카테고리와 교양 도서 목록을 반환합니다.")
+	@ApiResponse(responseCode = "200", description = "온보딩 선택지 조회 성공")
+	@ApiResponse(responseCode = "401", description = "Bearer token 누락, 만료 또는 검증 실패")
+	public OnboardingOptionsResponse onboardingOptions(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+	) {
+		authenticate(authorizationHeader);
+		return myPageService.getOnboardingOptions();
+	}
+
+	@PutMapping("/api/me/onboarding")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "온보딩 저장", description = "관심 분야를 교체 저장하고 읽은 책을 READ interaction으로 기록합니다.")
+	@ApiResponse(responseCode = "200", description = "온보딩 저장 성공")
+	@ApiResponse(responseCode = "400", description = "지원하지 않는 category/book ID 또는 빈 요청")
+	@ApiResponse(responseCode = "401", description = "Bearer token 누락, 만료 또는 검증 실패")
+	public OnboardingStatusResponse saveOnboarding(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestBody OnboardingRequest request
+	) {
+		AuthenticatedUser user = authenticate(authorizationHeader);
+		myPageService.saveOnboarding(user, request);
+		return new OnboardingStatusResponse(true);
+	}
+
+	private AuthenticatedUser authenticate(String authorizationHeader) {
 		String token = bearerTokenResolver.resolve(authorizationHeader)
 				.orElseThrow(() -> new UnauthorizedException("Bearer token is required."));
-		AuthenticatedUser user = tokenService.validateAccessToken(token);
-		return myPageService.getMyPage(user);
+		return tokenService.validateAccessToken(token);
 	}
 
 	@ExceptionHandler(UnauthorizedException.class)
@@ -55,6 +103,11 @@ public class MyPageController {
 	@ExceptionHandler(TokenService.TokenException.class)
 	public ResponseEntity<Map<String, String>> handleInvalidToken(TokenService.TokenException exception) {
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler(MyPageService.OnboardingRequestException.class)
+	public ResponseEntity<Map<String, String>> handleBadRequest(MyPageService.OnboardingRequestException exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
 	}
 
 	static class UnauthorizedException extends RuntimeException {

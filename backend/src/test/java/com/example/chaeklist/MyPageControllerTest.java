@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,13 +39,17 @@ class MyPageControllerTest {
 	void setUp() {
 		createMyPageTables();
 		long userId = userId();
+		resetOnboardingStatus(userId);
 
 		insertCategory(801, "인문");
 		insertCategory(802, "경제");
 		insertBook(901, "느리게 읽는 법", "문서윤");
 		insertBook(902, "조용한 투자 습관", "서도현");
+		insertBook(903, "겹치는 분야의 책", "한다겸");
 		insertBookCategory(901, 801);
 		insertBookCategory(902, 802);
+		insertBookCategory(903, 801);
+		insertBookCategory(903, 802);
 		insertInterest(userId, 801);
 		insertInterest(userId, 802);
 		insertInteraction(userId, 901, "READ", "2026-04-20 10:00:00");
@@ -62,6 +67,7 @@ class MyPageControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.user.email", is("reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.interests", hasSize(2)))
+				.andExpect(jsonPath("$.interests[0].id", is(801)))
 				.andExpect(jsonPath("$.interests[0].label", is("인문")))
 				.andExpect(jsonPath("$.readBooks", hasSize(1)))
 				.andExpect(jsonPath("$.readBooks[0].id", is("901")))
@@ -78,6 +84,82 @@ class MyPageControllerTest {
 		mockMvc.perform(get("/api/me/mypage"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.message", is("Bearer token is required.")));
+	}
+
+	@Test
+	void returnsOnboardingStatusFromUsersColumn() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(get("/api/me/onboarding-status")
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed", is(false)));
+	}
+
+	@Test
+	void returnsOnboardingOptions() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(get("/api/me/onboarding-options")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.categories", hasSize(2)))
+				.andExpect(jsonPath("$.categories[0].id", is(801)))
+				.andExpect(jsonPath("$.categories[0].name", is("인문")))
+				.andExpect(jsonPath("$.books", hasSize(3)))
+				.andExpect(jsonPath("$.books[0].id", is("903")))
+				.andExpect(jsonPath("$.books[0].title", is("겹치는 분야의 책")))
+				.andExpect(jsonPath("$.books[0].category", is("인문")))
+				.andExpect(jsonPath("$.books[1].id", is("901")))
+				.andExpect(jsonPath("$.books[2].id", is("902")));
+	}
+
+	@Test
+	void savesOnboardingByReplacingPreferencesAndReflectsInMyPage() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(put("/api/me/onboarding")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "categoryIds": [801],
+								  "readBookIds": [902]
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed", is(true)));
+
+		mockMvc.perform(get("/api/me/onboarding-status")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed", is(true)));
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.interests", hasSize(1)))
+				.andExpect(jsonPath("$.interests[0].id", is(801)))
+				.andExpect(jsonPath("$.interests[0].label", is("인문")))
+				.andExpect(jsonPath("$.readBooks", hasSize(1)))
+				.andExpect(jsonPath("$.readBooks[0].id", is("902")));
+	}
+
+	@Test
+	void rejectsOnboardingWithUnsupportedIds() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(put("/api/me/onboarding")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "categoryIds": [999999],
+								  "readBookIds": [902]
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Unsupported category id.")));
 	}
 
 	private String loginAndExtractAccessToken() throws Exception {
@@ -135,6 +217,14 @@ class MyPageControllerTest {
 				Long.class,
 				"reader@chaeklist.kr"
 		);
+	}
+
+	private void resetOnboardingStatus(long userId) {
+		jdbcTemplate.update("""
+				UPDATE users
+				SET onboarding_completed = FALSE
+				WHERE id = ?
+				""", userId);
 	}
 
 	private void insertCategory(long id, String name) {

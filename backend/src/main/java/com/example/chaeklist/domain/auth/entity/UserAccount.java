@@ -31,6 +31,9 @@ public class UserAccount {
 	@Column(nullable = false, length = 20)
 	private String status;
 
+	@Column(name = "onboarding_completed", nullable = false)
+	private boolean onboardingCompleted;
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 
@@ -45,6 +48,7 @@ public class UserAccount {
 		this.nickname = nickname;
 		this.passwordHash = passwordHash;
 		this.status = status;
+		this.onboardingCompleted = false;
 	}
 
 	@PrePersist
@@ -77,6 +81,10 @@ public class UserAccount {
 
 	public String status() {
 		return status;
+	}
+
+	public boolean onboardingCompleted() {
+		return onboardingCompleted;
 	}
 
 	public LocalDateTime createdAt() {

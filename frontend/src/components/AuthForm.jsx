@@ -51,6 +51,33 @@ function createAuthSession(data, fallbackUser) {
   };
 }
 
+async function resolvePostAuthPath(accessToken, nextPath) {
+  if (!accessToken) {
+    return nextPath;
+  }
+
+  try {
+    const response = await fetch("/api/me/onboarding-status", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      return nextPath;
+    }
+
+    const status = await response.json();
+    if (!status.completed) {
+      return "/onboarding";
+    }
+  } catch {
+    return nextPath;
+  }
+
+  return nextPath === "/" ? "/mypage" : nextPath;
+}
+
 export default function AuthForm({ mode }) {
   const { demoUser, login } = useAuth();
   const navigate = useNavigate();
@@ -133,14 +160,13 @@ export default function AuthForm({ mode }) {
         throw new Error(data.message ?? "요청을 처리하지 못했습니다.");
       }
 
-      login(
-        createAuthSession(data, {
-          ...demoUser,
-          email: payload.email,
-          nickname: form.nickname.trim() || demoUser.nickname,
-        }),
-      );
-      navigate(nextPath, { replace: true });
+      const session = createAuthSession(data, {
+        ...demoUser,
+        email: payload.email,
+        nickname: form.nickname.trim() || demoUser.nickname,
+      });
+      login(session);
+      navigate(await resolvePostAuthPath(session.accessToken, nextPath), { replace: true });
     } catch (error) {
       if (!isSignup && canUseDemoLogin()) {
         login({
