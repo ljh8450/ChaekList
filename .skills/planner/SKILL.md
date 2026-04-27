@@ -8,7 +8,11 @@ Use this skill when the user asks for a plan, when a task is large or ambiguous,
 3. List the smallest safe sequence of steps.
 4. Identify files likely to change.
 5. Identify validation commands or explain why validation may not apply.
-6. Wait for user approval before making changes.
+6. After proposing a plan, create a plan document under `docs/plan/yyyy-mm-dd/` using the filename format `task-summary-nn.md`.
+   - Use lowercase kebab-case for `task-summary`.
+   - Use a two-digit sequence number for `nn`, starting at `01`.
+   - Example: `docs/plan/2026-04-27/add-planner-plan-doc-rule-01.md`.
+7. Wait for user approval before making changes.
 
 ## Constraints
 - Do not edit files while acting only as planner unless the user explicitly asks to proceed.
