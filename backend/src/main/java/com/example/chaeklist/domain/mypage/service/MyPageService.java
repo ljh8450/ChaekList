@@ -3,16 +3,24 @@ package com.example.chaeklist.domain.mypage.service;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.example.chaeklist.domain.auth.dto.AuthUserResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageBookResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageInterestResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageRecommendationResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingBookOptionResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingCategoryOptionResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
+import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
+import com.example.chaeklist.domain.mypage.dto.OnboardingStatusResponse;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MyPageService {
@@ -35,9 +43,115 @@ public class MyPageService {
 		);
 	}
 
+	public OnboardingStatusResponse getOnboardingStatus(AuthenticatedUser user) {
+		Boolean completed = jdbcTemplate.queryForObject(
+				"SELECT onboarding_completed FROM users WHERE id = ?",
+				Boolean.class,
+				user.id()
+		);
+		return new OnboardingStatusResponse(Boolean.TRUE.equals(completed));
+	}
+
+	public OnboardingOptionsResponse getOnboardingOptions() {
+		return new OnboardingOptionsResponse(getOnboardingCategories(), getOnboardingBooks(DEFAULT_LIMIT));
+	}
+
+	@Transactional
+	public void saveOnboarding(AuthenticatedUser user, OnboardingRequest request) {
+		List<Long> categoryIds = normalizeIds(request == null ? null : request.categoryIds());
+		List<Long> readBookIds = normalizeIds(request == null ? null : request.readBookIds());
+
+		if (categoryIds.isEmpty()) {
+			throw new OnboardingRequestException("At least one category is required.");
+		}
+		if (readBookIds.isEmpty()) {
+			throw new OnboardingRequestException("At least one read book is required.");
+		}
+
+		validateCategories(categoryIds);
+		validateBooks(readBookIds);
+
+		jdbcTemplate.update("DELETE FROM user_interest_categories WHERE user_id = ?", user.id());
+		for (Long categoryId : categoryIds) {
+			jdbcTemplate.update("""
+					INSERT INTO user_interest_categories (user_id, category_id, created_at)
+					VALUES (?, ?, CURRENT_TIMESTAMP)
+					""", user.id(), categoryId);
+		}
+
+		jdbcTemplate.update("DELETE FROM user_book_interactions WHERE user_id = ? AND interaction_type = 'READ'", user.id());
+		for (Long bookId : readBookIds) {
+			insertReadInteraction(user.id(), bookId);
+		}
+
+		jdbcTemplate.update("""
+				UPDATE users
+				SET onboarding_completed = TRUE,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE id = ?
+				""", user.id());
+	}
+
+	private List<OnboardingCategoryOptionResponse> getOnboardingCategories() {
+		return jdbcTemplate.query("""
+				SELECT id, name
+				FROM categories
+				WHERE is_active = TRUE
+				ORDER BY display_order ASC, name ASC
+				""",
+				(resultSet, rowNumber) -> new OnboardingCategoryOptionResponse(
+						resultSet.getLong("id"),
+						resultSet.getString("name"),
+						resultSet.getString("name") + " 분야의 탐색과 추천에 반영합니다."
+				)
+		);
+	}
+
+	private List<OnboardingBookOptionResponse> getOnboardingBooks(int limit) {
+		return jdbcTemplate.query("""
+				SELECT
+					b.id,
+					b.title,
+					b.author,
+					COALESCE(primary_category.name, '미분류') AS category_name,
+					COALESCE(NULLIF(b.filter_reason, ''), '교양 필터 통과') AS reason
+				FROM books b
+				LEFT JOIN (
+					SELECT book_id, category_id
+					FROM (
+						SELECT
+							bc.book_id,
+							c.id AS category_id,
+							ROW_NUMBER() OVER (
+								PARTITION BY bc.book_id
+								ORDER BY c.display_order ASC, c.name ASC, c.id ASC
+							) AS rn
+						FROM book_categories bc
+						JOIN categories c ON c.id = bc.category_id
+						WHERE c.is_active = TRUE
+					) ranked_categories
+					WHERE rn = 1
+				) primary_category_link ON primary_category_link.book_id = b.id
+				LEFT JOIN categories primary_category ON primary_category.id = primary_category_link.category_id
+				WHERE b.is_general_eligible = TRUE
+				ORDER BY COALESCE(primary_category.display_order, 9999) ASC, b.id DESC
+				LIMIT ?
+				""",
+				(resultSet, rowNumber) -> new OnboardingBookOptionResponse(
+						resultSet.getString("id"),
+						resultSet.getString("title"),
+						resultSet.getString("author"),
+						resultSet.getString("category_name"),
+						resultSet.getString("category_name") + " 분야의 읽은 책 기록을 추천에 반영합니다."
+				),
+				limit
+		);
+	}
+
 	private List<MyPageInterestResponse> getInterests(long userId) {
 		return jdbcTemplate.query("""
 				SELECT
+					c.id AS category_id,
 					c.name AS category_name,
 					COUNT(DISTINCT ubi.id) AS interaction_count
 				FROM user_interest_categories uic
@@ -53,12 +167,60 @@ public class MyPageService {
 				ORDER BY c.display_order ASC, c.name ASC
 				""",
 				(resultSet, rowNumber) -> new MyPageInterestResponse(
+						resultSet.getLong("category_id"),
 						resultSet.getString("category_name"),
 						resultSet.getString("category_name") + " 분야의 탐색과 저장 기록을 추천에 반영합니다.",
 						toInterestScore(resultSet.getInt("interaction_count"))
 				),
 				userId
 		);
+	}
+
+	private List<Long> normalizeIds(List<Long> ids) {
+		if (ids == null) {
+			return List.of();
+		}
+		return ids.stream()
+				.filter(id -> id != null && id > 0)
+				.distinct()
+				.toList();
+	}
+
+	private void validateCategories(List<Long> categoryIds) {
+		Set<Long> activeCategoryIds = new HashSet<>(jdbcTemplate.queryForList("""
+				SELECT id
+				FROM categories
+				WHERE id IN (%s)
+					AND is_active = TRUE
+				""".formatted(placeholders(categoryIds.size())), Long.class, categoryIds.toArray()));
+
+		if (activeCategoryIds.size() != categoryIds.size()) {
+			throw new OnboardingRequestException("Unsupported category id.");
+		}
+	}
+
+	private void validateBooks(List<Long> bookIds) {
+		Set<Long> eligibleBookIds = new HashSet<>(jdbcTemplate.queryForList("""
+				SELECT id
+				FROM books
+				WHERE id IN (%s)
+					AND is_general_eligible = TRUE
+				""".formatted(placeholders(bookIds.size())), Long.class, bookIds.toArray()));
+
+		if (eligibleBookIds.size() != bookIds.size()) {
+			throw new OnboardingRequestException("Unsupported book id.");
+		}
+	}
+
+	private String placeholders(int count) {
+		return String.join(", ", java.util.Collections.nCopies(count, "?"));
+	}
+
+	private void insertReadInteraction(long userId, long bookId) {
+		jdbcTemplate.update("""
+				INSERT INTO user_book_interactions (user_id, book_id, interaction_type, created_at)
+				VALUES (?, ?, 'READ', CURRENT_TIMESTAMP)
+				""", userId, bookId);
 	}
 
 	private List<MyPageBookResponse> getBooksByInteraction(long userId, String interactionType, int limit) {
@@ -216,5 +378,12 @@ public class MyPageService {
 	private LocalDateTime readLocalDateTime(ResultSet resultSet, String columnName) throws SQLException {
 		java.sql.Timestamp timestamp = resultSet.getTimestamp(columnName);
 		return timestamp == null ? null : timestamp.toLocalDateTime();
+	}
+
+	public static class OnboardingRequestException extends RuntimeException {
+
+		public OnboardingRequestException(String message) {
+			super(message);
+		}
 	}
 }

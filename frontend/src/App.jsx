@@ -7,6 +7,7 @@ import CategoriesPage from "./pages/CategoriesPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyPage from "./pages/MyPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import RankingsPage from "./pages/RankingsPage";
 import SignupPage from "./pages/SignupPage";
 
@@ -81,6 +82,14 @@ function AppRoutes() {
           <Route element={<RankingsPage />} path="/rankings" />
           <Route element={<CategoriesPage />} path="/categories" />
           <Route element={<BookDetailPage />} path="/books/:bookId" />
+          <Route
+            element={
+              <RequireAuth>
+                <OnboardingPage />
+              </RequireAuth>
+            }
+            path="/onboarding"
+          />
           <Route
             element={
               <RequireAuth>

@@ -3,6 +3,8 @@
 
 USE chaeklist;
 
+SET NAMES utf8mb4;
+
 INSERT INTO users (email, nickname, password_hash, status)
 VALUES
   ('minjun.kim@example.com', '민준', '$2a$10$dummyPasswordHashForLocalSeed000001', 'ACTIVE'),
