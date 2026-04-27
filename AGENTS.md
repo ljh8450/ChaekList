@@ -17,6 +17,7 @@
 - Backend-only tasks should stay inside `backend/` unless clearly required.
 - Documentation-focused tasks should use the docs role and stay inside `docs/`, `README.md`, `AGENTS.md`, or `.skills/` unless clearly required.
 - Before creating a new documentation file, report the proposed path, purpose, and outline, then wait for approval.
+- Planner role plan documents under `docs/plan/yyyy-mm-dd/` do not require this new-document approval step.
 - Ask before changing database schema, environment variables, package dependencies, CI, or deployment files.
 
 ## Role rules
@@ -34,8 +35,9 @@
 
 ## Planning rules
 - When using the planner role, inspect relevant existing files before proposing steps.
-- Do not edit files while acting only as planner unless the user explicitly asks to proceed.
-- Wait for user approval before moving from planning to implementation.
+- While acting as planner, create or update only the plan document under `docs/plan/yyyy-mm-dd/` without separate approval.
+- Do not edit code or implementation files while acting only as planner unless the user explicitly asks to proceed.
+- Wait for user approval before moving from planning to code or implementation changes.
 - For tasks touching both frontend and backend, first propose a short plan.
 - For large tasks, break work into small sequential steps.
 - Avoid broad rewrites unless explicitly requested.
