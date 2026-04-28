@@ -104,9 +104,12 @@ public class BookController {
 	@ApiResponse(responseCode = "200", description = "책 상세 조회 성공")
 	@ApiResponse(responseCode = "404", description = "존재하지 않는 책")
 	public BookDetailResponse bookDetail(
-			@Parameter(description = "책 ID", example = "1") @PathVariable String bookId
+			@Parameter(description = "책 ID", example = "1") @PathVariable String bookId,
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader
 	) {
-		return bookService.getBookDetail(bookId);
+		return bearerTokenResolver.resolve(authorizationHeader)
+				.map(token -> bookService.getBookDetail(bookId, tokenService.validateAccessToken(token)))
+				.orElseGet(() -> bookService.getBookDetail(bookId));
 	}
 
 	@ExceptionHandler(UnauthorizedException.class)

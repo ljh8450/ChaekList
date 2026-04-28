@@ -30,10 +30,20 @@ public record BookDetailResponse(
 		@Schema(description = "키워드 목록", example = "[\"독서\", \"사유\", \"집중\"]")
 		List<String> keywords,
 		@Schema(description = "비슷한 책 목록")
-		List<BookSummaryResponse> similarBooks
+		List<BookSummaryResponse> similarBooks,
+		@Schema(description = "현재 사용자의 저장 여부", example = "true")
+		boolean saved,
+		@Schema(description = "현재 사용자의 읽음 여부", example = "false")
+		boolean read,
+		@Schema(description = "현재 사용자의 관심 없음 여부", example = "false")
+		boolean dismissed
 ) {
 
 	public static BookDetailResponse from(Book book, List<Book> similarBooks) {
+		return from(book, similarBooks, false, false, false);
+	}
+
+	public static BookDetailResponse from(Book book, List<Book> similarBooks, boolean saved, boolean read, boolean dismissed) {
 		return new BookDetailResponse(
 				book.id(),
 				book.title(),
@@ -46,7 +56,10 @@ public record BookDetailResponse(
 				book.saves(),
 				"+" + book.growthRate() + "%",
 				book.keywords(),
-				similarBooks.stream().map(BookSummaryResponse::from).toList()
+				similarBooks.stream().map(BookSummaryResponse::from).toList(),
+				saved,
+				read,
+				dismissed
 		);
 	}
 }
