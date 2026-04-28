@@ -341,6 +341,7 @@ public class MyPageService {
 					b.id,
 					b.title,
 					b.author,
+					b.cover_image_url,
 					COALESCE(primary_category.name, '미분류') AS category_name,
 					COALESCE(NULLIF(b.filter_reason, ''), '교양 필터 통과') AS tag,
 					COUNT(DISTINCT view_interactions.id) AS view_count,
@@ -359,7 +360,7 @@ public class MyPageService {
 				WHERE ubi.user_id = ?
 					AND ubi.interaction_type = ?
 					AND b.is_general_eligible = TRUE
-				GROUP BY b.id, b.title, b.author, primary_category.name, primary_category.display_order, b.filter_reason
+				GROUP BY b.id, b.title, b.author, b.cover_image_url, primary_category.name, primary_category.display_order, b.filter_reason
 				ORDER BY MAX(ubi.created_at) DESC, b.id DESC
 				LIMIT ?
 				""",
@@ -376,6 +377,7 @@ public class MyPageService {
 					b.id,
 					b.title,
 					b.author,
+					b.cover_image_url,
 					COALESCE(primary_category.name, '미분류') AS category_name,
 					COALESCE(NULLIF(b.filter_reason, ''), '교양 필터 통과') AS tag,
 					COUNT(DISTINCT view_interactions.id) AS view_count,
@@ -406,7 +408,7 @@ public class MyPageService {
 					AND save_interactions.interaction_type = 'SAVE'
 					AND later_unsave.id IS NULL
 					AND b.is_general_eligible = TRUE
-				GROUP BY b.id, b.title, b.author, primary_category.name, primary_category.display_order, b.filter_reason
+				GROUP BY b.id, b.title, b.author, b.cover_image_url, primary_category.name, primary_category.display_order, b.filter_reason
 				ORDER BY MAX(save_interactions.created_at) DESC, b.id DESC
 				LIMIT ?
 				""",
@@ -414,6 +416,7 @@ public class MyPageService {
 						resultSet.getString("id"),
 						resultSet.getString("title"),
 						resultSet.getString("author"),
+						resultSet.getString("cover_image_url"),
 						resultSet.getString("category_name"),
 						resultSet.getString("tag"),
 						formatCount(resultSet.getInt("view_count")),
@@ -463,6 +466,7 @@ public class MyPageService {
 				resultSet.getString("id"),
 				resultSet.getString("title"),
 				resultSet.getString("author"),
+				resultSet.getString("cover_image_url"),
 				category,
 				resultSet.getString("tag"),
 				formatCount(resultSet.getInt("view_count")),

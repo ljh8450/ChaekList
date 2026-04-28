@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Economics test prep book cover">
+  <rect width="240" height="320" rx="18" fill="#f1f5f9"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#64748b"/>
+  <rect x="42" y="58" width="156" height="52" rx="8" fill="#ffffff" opacity=".9"/>
+  <text x="60" y="92" fill="#111827" font-family="Arial, sans-serif" font-size="24" font-weight="700">1000</text>
+  <path d="M54 150h132M54 182h132M54 214h92" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity=".75"/>
+  <text x="42" y="266" fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="700">ECONOMICS</text>
+  <text x="42" y="290" fill="#ffffff" font-family="Arial, sans-serif" font-size="16" font-weight="700">TEST PREP</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Quiet Investing book cover">
+  <rect width="240" height="320" rx="18" fill="#f0fdf4"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#16a34a"/>
+  <path d="M54 220c34-78 72-112 132-136" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+  <path d="M54 220h132" stroke="#111827" stroke-width="8" stroke-linecap="round" opacity=".28"/>
+  <circle cx="80" cy="178" r="10" fill="#111827" opacity=".35"/>
+  <circle cx="124" cy="132" r="10" fill="#111827" opacity=".35"/>
+  <circle cx="174" cy="92" r="10" fill="#111827" opacity=".35"/>
+  <text x="34" y="72" fill="#111827" font-family="Arial, sans-serif" font-size="22" font-weight="700">QUIET</text>
+  <text x="34" y="100" fill="#111827" font-family="Arial, sans-serif" font-size="22" font-weight="700">INVESTING</text>
+</svg>

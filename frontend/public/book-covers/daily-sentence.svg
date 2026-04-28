@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Daily Sentence book cover">
+  <rect width="240" height="320" rx="18" fill="#f3f4f6"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#9ca3af"/>
+  <rect x="48" y="68" width="144" height="184" rx="8" fill="#ffffff" opacity=".82"/>
+  <path d="M70 114h100M70 146h78M70 178h94M70 210h66" stroke="#1e2a38" stroke-width="8" stroke-linecap="round" opacity=".55"/>
+  <text x="44" y="284" fill="#111827" font-family="Arial, sans-serif" font-size="20" font-weight="700">DAILY SENTENCE</text>
+</svg>
