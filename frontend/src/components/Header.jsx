@@ -14,8 +14,8 @@ export default function Header() {
     <header className="sticky top-0 z-10 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center justify-between gap-4">
-          <Link className="text-xl font-bold text-[#1E2A38]" to="/">
-            ChaekList
+          <Link className="inline-flex items-center" to="/" aria-label="ChaekList 홈">
+            <img className="h-10 w-10" src="/logo.svg" alt="ChaekList" />
           </Link>
           <nav className="hidden items-center gap-2 sm:flex">
             {navItems.map((item) => (
