@@ -2,9 +2,9 @@
 
 ## 기준
 
-- 작성일: 2026-04-28
-- 상위 계획: `docs/plan/2026-04-28/follow-up-plan.md`
-- 대상 항목: `2순위: 서비스 고유 기능 강화`
+- 작성일: 2026-04-29
+- 상위 계획: `docs/plan/2026-04-29/follow-up-plan.md`
+- 대상 항목: `1순위: 서비스 고유 기능 강화`
 - README 기준: ChaekList의 핵심 차별점은 교양 전용 랭킹, 개인 맞춤 추천, 트렌드 피드다.
 - 범위: planner 역할 문서화만 수행한다. frontend/backend 코드, API, DB schema 변경은 포함하지 않는다.
 
