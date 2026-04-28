@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Small City book cover">
+  <rect width="240" height="320" rx="18" fill="#f3f4f6"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#6b7280"/>
+  <rect x="48" y="150" width="30" height="92" fill="#1e2a38"/>
+  <rect x="90" y="116" width="42" height="126" fill="#1e2a38"/>
+  <rect x="146" y="138" width="46" height="104" fill="#1e2a38"/>
+  <circle cx="176" cy="78" r="22" fill="#f9fafb" opacity=".9"/>
+  <path d="M44 260h152" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity=".7"/>
+  <text x="36" y="70" fill="#ffffff" font-family="Arial, sans-serif" font-size="21" font-weight="700">SMALL CITY</text>
+  <text x="36" y="96" fill="#ffffff" font-family="Arial, sans-serif" font-size="21" font-weight="700">NIGHT</text>
+</svg>

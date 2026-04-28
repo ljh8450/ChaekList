@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Atomic Habits book cover">
+  <rect width="240" height="320" rx="18" fill="#f8fafc"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#f59e0b"/>
+  <circle cx="188" cy="72" r="28" fill="#111827" opacity=".16"/>
+  <path d="M54 220h132" stroke="#111827" stroke-width="10" stroke-linecap="round" opacity=".25"/>
+  <path d="M54 244h88" stroke="#111827" stroke-width="10" stroke-linecap="round" opacity=".25"/>
+  <text x="38" y="86" fill="#111827" font-family="Arial, sans-serif" font-size="22" font-weight="700">ATOMIC</text>
+  <text x="38" y="114" fill="#111827" font-family="Arial, sans-serif" font-size="22" font-weight="700">HABITS</text>
+  <text x="38" y="154" fill="#111827" font-family="Arial, sans-serif" font-size="13" font-weight="700">small systems</text>
+  <text x="38" y="174" fill="#111827" font-family="Arial, sans-serif" font-size="13" font-weight="700">big change</text>
+</svg>

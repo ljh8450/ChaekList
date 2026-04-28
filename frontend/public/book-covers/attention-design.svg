@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320" role="img" aria-label="Attention Design book cover">
+  <rect width="240" height="320" rx="18" fill="#fff7ed"/>
+  <rect x="18" y="18" width="204" height="284" rx="12" fill="#f97316"/>
+  <circle cx="120" cy="126" r="54" fill="none" stroke="#ffffff" stroke-width="12" opacity=".85"/>
+  <circle cx="120" cy="126" r="16" fill="#1e2a38"/>
+  <path d="M120 56v-24M120 220v-24M50 126H26M214 126h-24" stroke="#1e2a38" stroke-width="8" stroke-linecap="round" opacity=".35"/>
+  <text x="34" y="244" fill="#111827" font-family="Arial, sans-serif" font-size="21" font-weight="700">ATTENTION</text>
+  <text x="34" y="272" fill="#111827" font-family="Arial, sans-serif" font-size="21" font-weight="700">DESIGN</text>
+</svg>
