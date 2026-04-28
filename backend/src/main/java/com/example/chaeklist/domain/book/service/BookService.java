@@ -307,31 +307,13 @@ public class BookService {
 	}
 
 	private void saveRecommendation(long userId, PersonalizedRecommendation recommendation) {
-		long bookId = recommendation.book().numericId();
-		Integer count = jdbcTemplate.queryForObject("""
-				SELECT COUNT(*)
-				FROM recommendations
-				WHERE user_id = ?
-					AND book_id = ?
-					AND recommendation_type = 'CONTENT_BASED'
-				""", Integer.class, userId, bookId);
-
-		if (count != null && count > 0) {
-			jdbcTemplate.update("""
-					UPDATE recommendations
-					SET reason = ?,
-						score = ?
-					WHERE user_id = ?
-						AND book_id = ?
-						AND recommendation_type = 'CONTENT_BASED'
-					""", recommendation.reason(), recommendation.score(), userId, bookId);
-			return;
-		}
-
 		jdbcTemplate.update("""
 				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, generated_at)
 				VALUES (?, ?, 'CONTENT_BASED', ?, ?, CURRENT_TIMESTAMP)
-				""", userId, bookId, recommendation.reason(), recommendation.score());
+				ON DUPLICATE KEY UPDATE
+					reason = VALUES(reason),
+					score = VALUES(score)
+				""", userId, recommendation.book().numericId(), recommendation.reason(), recommendation.score());
 	}
 
 	private Set<String> getInterestCategories(long userId) {

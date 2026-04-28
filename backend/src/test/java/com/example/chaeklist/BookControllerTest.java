@@ -253,6 +253,7 @@ class BookControllerTest {
 		org.assertj.core.api.Assertions.assertThat(countRecommendations(userId, 411)).isEqualTo(1);
 		org.assertj.core.api.Assertions.assertThat(recommendationReason(userId, 411))
 				.isEqualTo("관심 분야로 선택한 경제 분야의 교양 도서입니다.");
+		java.time.LocalDateTime firstGeneratedAt = recommendationGeneratedAt(userId, 411);
 
 		mockMvc.perform(get("/api/me/home")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -260,6 +261,7 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.todayRecommendation.id", is("411")));
 
 		org.assertj.core.api.Assertions.assertThat(countRecommendations(userId, 411)).isEqualTo(1);
+		org.assertj.core.api.Assertions.assertThat(recommendationGeneratedAt(userId, 411)).isEqualTo(firstGeneratedAt);
 	}
 
 	@Test
@@ -530,7 +532,8 @@ class BookControllerTest {
 					recommendation_type VARCHAR(30) NOT NULL,
 					reason VARCHAR(255),
 					score DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-					generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+					generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					CONSTRAINT uk_recommendations_user_book_type UNIQUE (user_id, book_id, recommendation_type)
 				)
 				""");
 	}
@@ -553,5 +556,16 @@ class BookControllerTest {
 					AND book_id = ?
 					AND recommendation_type = 'CONTENT_BASED'
 				""", String.class, userId, bookId);
+	}
+
+	private java.time.LocalDateTime recommendationGeneratedAt(long userId, long bookId) {
+		java.sql.Timestamp timestamp = jdbcTemplate.queryForObject("""
+				SELECT generated_at
+				FROM recommendations
+				WHERE user_id = ?
+					AND book_id = ?
+					AND recommendation_type = 'CONTENT_BASED'
+				""", java.sql.Timestamp.class, userId, bookId);
+		return timestamp.toLocalDateTime();
 	}
 }

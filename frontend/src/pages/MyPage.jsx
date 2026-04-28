@@ -8,11 +8,29 @@ function formatDate(value) {
     return "";
   }
 
+  const date = Array.isArray(value)
+    ? new Date(value[0], value[1] - 1, value[2], value[3] ?? 0, value[4] ?? 0, value[5] ?? 0)
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
   return new Intl.DateTimeFormat("ko-KR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
+}
+
+function sourceLabel(source) {
+  if (source === "CONTENT_BASED") {
+    return "개인화 추천";
+  }
+  if (source === "TRENDING") {
+    return "급상승 추천";
+  }
+  return source ?? "추천";
 }
 
 function EmptyState({ message, actionLabel, to }) {
@@ -215,9 +233,9 @@ export default function MyPage() {
               {!isLoading && recommendationHistory.length === 0 ? (
                 <div className="mt-5">
                   <EmptyState
-                    actionLabel="랭킹 보기"
-                    message="추천 근거가 쌓이면 이곳에서 확인할 수 있습니다."
-                    to="/rankings"
+                    actionLabel="오늘의 추천 보기"
+                    message="홈에서 개인화 추천이 만들어지면 추천 이유와 함께 이곳에 남습니다."
+                    to="/"
                   />
                 </div>
               ) : (
@@ -225,15 +243,24 @@ export default function MyPage() {
                   {recommendationHistory.map((history) => (
                     <li className="py-4 first:pt-0 last:pb-0" key={history.id}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="font-bold text-[#1E2A38]">{history.title}</p>
-                          <p className="mt-1 text-sm leading-6 text-[#6B7280]">{history.reason}</p>
+                        <div className="min-w-0">
+                          <Link className="font-bold text-[#1E2A38] hover:underline" to={`/books/${history.bookId}`}>
+                            {history.title}
+                          </Link>
+                          <p className="mt-1 break-keep text-sm leading-6 text-[#6B7280]">{history.reason}</p>
                         </div>
-                        <span className="shrink-0 rounded-full border border-[#E5E7EB] px-3 py-1 text-xs text-[#6B7280]">
-                          {formatDate(history.generatedAt)}
-                        </span>
+                        {formatDate(history.generatedAt) ? (
+                          <span className="shrink-0 rounded-full border border-[#E5E7EB] px-3 py-1 text-xs text-[#6B7280]">
+                            {formatDate(history.generatedAt)}
+                          </span>
+                        ) : null}
                       </div>
-                      <p className="mt-2 text-xs font-semibold text-[#4CAF50]">{history.source}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#4CAF50]/10 px-2 py-1 text-xs font-semibold text-[#2E7D32]">
+                          {sourceLabel(history.source)}
+                        </span>
+                        <span className="text-xs font-semibold text-[#6B7280]">추천 점수 {history.score}</span>
+                      </div>
                     </li>
                   ))}
                 </ol>
