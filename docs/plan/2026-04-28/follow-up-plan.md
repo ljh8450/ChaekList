@@ -8,7 +8,6 @@
 - 완료된 선행 항목:
   - `docs/plan/2026-04-28/priority-1-mypage-preference-management-plan.md`
   - `docs/plan/2026-04-28/priority-2-book-detail-interactions-plan.md`
-  - `docs/plan/2026-04-28/priority-1-personalized-home-recommendation-plan.md`
 - 목적: 기존 계획에서 아직 남은 후속 구현 항목만 정리한다.
 - 범위: planner 역할 문서화만 수행한다. frontend/backend 코드, API, DB schema 변경은 포함하지 않는다.
 
@@ -47,7 +46,7 @@ MVP에서는 외부 도서 API에서 표지 이미지를 가져오되, 매번 �
 
 상세 계획:
 
-- `docs/plan/2026-04-28/priority-4-book-image-integration-plan.md`
+- `docs/plan/2026-04-28/priority-1-book-image-integration-plan.md`
 
 ### 2순위: 추천 이유 고도화와 추천 히스토리 저장
 
