@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 
 function normalizeCategory(category) {
@@ -32,11 +32,13 @@ function getInitialBookIds(options, myPage) {
 
 export default function OnboardingPage() {
   const { accessToken, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [availableCategories, setAvailableCategories] = useState([]);
   const [availableBooks, setAvailableBooks] = useState([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [selectedBookIds, setSelectedBookIds] = useState([]);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -44,6 +46,9 @@ export default function OnboardingPage() {
   const [canSave, setCanSave] = useState(false);
 
   const canSubmit = canSave && selectedCategoryIds.length > 0 && selectedBookIds.length > 0 && !isSubmitting;
+  const focusedSection = new URLSearchParams(location.search).get("section");
+  const isInterestFocused = focusedSection === "interests";
+  const isReadBooksFocused = focusedSection === "read-books";
 
   const selectedSummary = useMemo(
     () => ({
@@ -93,12 +98,15 @@ export default function OnboardingPage() {
         const nextBooks = (options.books ?? options.readableBooks ?? []).map(normalizeBook).filter((book) => book.id);
         const myPageResponse = await fetch("/api/me/mypage", { headers });
         const myPage = myPageResponse.ok ? await myPageResponse.json() : null;
+        const initialCategoryIds = getInitialCategoryIds(nextCategories, myPage);
+        const initialBookIds = getInitialBookIds(nextBooks, myPage);
 
         if (!ignore) {
           setAvailableCategories(nextCategories);
           setAvailableBooks(nextBooks);
-          setSelectedCategoryIds(getInitialCategoryIds(nextCategories, myPage));
-          setSelectedBookIds(getInitialBookIds(nextBooks, myPage));
+          setSelectedCategoryIds(initialCategoryIds);
+          setSelectedBookIds(initialBookIds);
+          setIsEditMode(initialCategoryIds.length > 0 || initialBookIds.length > 0);
           setCanSave(nextCategories.length > 0 && nextBooks.length > 0);
           if (nextCategories.length === 0 || nextBooks.length === 0) {
             setMessage("온보딩 선택지가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
@@ -108,6 +116,7 @@ export default function OnboardingPage() {
         if (!ignore) {
           setAvailableCategories([]);
           setAvailableBooks([]);
+          setIsEditMode(false);
           setCanSave(false);
           setMessage("온보딩 선택지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
         }
@@ -196,20 +205,29 @@ export default function OnboardingPage() {
       <form className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]" onSubmit={submitOnboarding}>
         <div className="space-y-6">
           <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold text-[#4CAF50]">개인화 시작</p>
-            <h1 className="mt-3 text-3xl font-bold leading-tight text-[#1E2A38]">관심 분야와 읽은 책을 선택해 주세요</h1>
+            <p className="text-sm font-semibold text-[#4CAF50]">{isEditMode ? "취향 수정" : "개인화 시작"}</p>
+            <h1 className="mt-3 text-3xl font-bold leading-tight text-[#1E2A38]">
+              {isEditMode ? "관심 분야와 읽은 책을 다시 조정해 주세요" : "관심 분야와 읽은 책을 선택해 주세요"}
+            </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#6B7280]">
-              선택한 정보는 마이페이지와 추천 이유에 반영됩니다. 지금 고른 내용은 이후 취향 수정에서 다시 바꿀 수 있습니다.
+              {isEditMode
+                ? "현재 마이페이지에 반영된 취향을 불러왔습니다. 수정한 내용은 저장 후 추천 이유에 다시 반영됩니다."
+                : "선택한 정보는 마이페이지와 추천 이유에 반영됩니다. 지금 고른 내용은 이후 취향 수정에서 다시 바꿀 수 있습니다."}
             </p>
             {isLoading ? <p className="mt-4 text-sm text-[#6B7280]">온보딩 선택지를 불러오는 중입니다.</p> : null}
             {message ? <p className="mt-4 text-sm font-medium text-[#4CAF50]">{message}</p> : null}
           </div>
 
-          <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+          <section
+            className={`rounded-lg border bg-white p-5 shadow-sm ${
+              isInterestFocused ? "border-[#4CAF50] ring-2 ring-[#4CAF50]/20" : "border-[#E5E7EB]"
+            }`}
+          >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-[#1E2A38]">관심 분야</p>
                 <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">추천 기준이 되는 교양 필터</h2>
+                {isInterestFocused ? <p className="mt-2 text-sm text-[#4CAF50]">마이페이지에서 관심 분야 수정을 선택했습니다.</p> : null}
               </div>
               <span className="rounded-full bg-[#4CAF50]/10 px-3 py-2 text-xs font-semibold text-[#4CAF50]">
                 {selectedCategoryIds.length}개 선택
@@ -243,11 +261,16 @@ export default function OnboardingPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+          <section
+            className={`rounded-lg border bg-white p-5 shadow-sm ${
+              isReadBooksFocused ? "border-[#F59E0B] ring-2 ring-[#F59E0B]/20" : "border-[#E5E7EB]"
+            }`}
+          >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-[#1E2A38]">읽은 책</p>
                 <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">취향 분석에 사용할 책</h2>
+                {isReadBooksFocused ? <p className="mt-2 text-sm text-[#B45309]">마이페이지에서 읽은 책 수정을 선택했습니다.</p> : null}
               </div>
               <span className="rounded-full bg-[#F59E0B]/10 px-3 py-2 text-xs font-semibold text-[#B45309]">
                 {selectedBookIds.length}권 선택
@@ -333,7 +356,7 @@ export default function OnboardingPage() {
             disabled={!canSubmit}
             type="submit"
           >
-            {isSubmitting ? "저장 중..." : "저장하고 마이페이지로"}
+            {isSubmitting ? "저장 중..." : isEditMode ? "수정하고 마이페이지로" : "저장하고 마이페이지로"}
           </button>
         </aside>
       </form>

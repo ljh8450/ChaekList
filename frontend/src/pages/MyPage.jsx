@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import BookCard from "../components/BookCard";
 import { useAuth } from "../App";
 
@@ -12,6 +13,20 @@ function formatDate(value) {
     month: "2-digit",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function EmptyState({ message, actionLabel, to }) {
+  return (
+    <div className="rounded-lg border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-5 text-sm text-[#6B7280]">
+      <p>{message}</p>
+      <Link
+        className="mt-4 inline-flex rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#27384a]"
+        to={to}
+      >
+        {actionLabel}
+      </Link>
+    </div>
+  );
 }
 
 export default function MyPage() {
@@ -129,71 +144,124 @@ export default function MyPage() {
                 <p className="text-sm font-semibold text-[#1E2A38]">관심 분야</p>
                 <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">추천에 반영되는 독서 취향</h2>
               </div>
-              <span className="rounded-full bg-[#4CAF50]/10 px-3 py-2 text-xs font-semibold text-[#4CAF50]">API 데이터</span>
+              <Link
+                className="inline-flex rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-[#1E2A38] transition hover:border-[#1E2A38]"
+                to="/onboarding?section=interests"
+              >
+                관심 분야 수정
+              </Link>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-              {interestProfiles.map((interest) => (
-                <article className="rounded-lg border border-[#E5E7EB] p-4" key={interest.label}>
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-bold text-[#1E2A38]">{interest.label}</h3>
-                    <span className="text-sm font-bold text-[#F59E0B]">{interest.score}%</span>
-                  </div>
-                  <div className="mt-3 h-2 rounded-full bg-[#F5F3EF]">
-                    <div className="h-2 rounded-full bg-[#4CAF50]" style={{ width: `${interest.score}%` }} />
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-[#6B7280]">{interest.description}</p>
-                </article>
-              ))}
-            </div>
+            {!isLoading && interestProfiles.length === 0 ? (
+              <div className="mt-5">
+                <EmptyState
+                  actionLabel="관심 분야 선택"
+                  message="관심 분야를 선택하면 추천 이유가 더 구체적으로 바뀝니다."
+                  to="/onboarding?section=interests"
+                />
+              </div>
+            ) : (
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                {interestProfiles.map((interest) => (
+                  <article className="rounded-lg border border-[#E5E7EB] p-4" key={interest.label}>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-bold text-[#1E2A38]">{interest.label}</h3>
+                      <span className="text-sm font-bold text-[#F59E0B]">{interest.score}%</span>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-[#F5F3EF]">
+                      <div className="h-2 rounded-full bg-[#4CAF50]" style={{ width: `${interest.score}%` }} />
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-[#6B7280]">{interest.description}</p>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
-            <div>
-              <p className="text-sm font-semibold text-[#1E2A38]">읽은 책</p>
-              <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">취향 분석에 사용된 책</h2>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#1E2A38]">읽은 책</p>
+                <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">취향 분석에 사용된 책</h2>
+              </div>
+              <Link
+                className="inline-flex rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-[#1E2A38] transition hover:border-[#1E2A38]"
+                to="/onboarding?section=read-books"
+              >
+                읽은 책 수정
+              </Link>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {readBooks.map((book) => (
-                <BookCard book={book} key={book.id} />
-              ))}
-            </div>
+            {!isLoading && readBooks.length === 0 ? (
+              <div className="mt-5">
+                <EmptyState
+                  actionLabel="읽은 책 추가"
+                  message="읽은 책을 추가하면 취향 분석에 반영됩니다."
+                  to="/onboarding?section=read-books"
+                />
+              </div>
+            ) : (
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {readBooks.map((book) => (
+                  <BookCard book={book} key={book.id} />
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
             <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
               <p className="text-sm font-semibold text-[#1E2A38]">추천 히스토리</p>
               <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">왜 추천됐는지 남기는 기록</h2>
-              <ol className="mt-5 divide-y divide-[#E5E7EB]">
-                {recommendationHistory.map((history) => (
-                  <li className="py-4 first:pt-0 last:pb-0" key={history.id}>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-bold text-[#1E2A38]">{history.title}</p>
-                        <p className="mt-1 text-sm leading-6 text-[#6B7280]">{history.reason}</p>
+              {!isLoading && recommendationHistory.length === 0 ? (
+                <div className="mt-5">
+                  <EmptyState
+                    actionLabel="랭킹 보기"
+                    message="추천 근거가 쌓이면 이곳에서 확인할 수 있습니다."
+                    to="/rankings"
+                  />
+                </div>
+              ) : (
+                <ol className="mt-5 divide-y divide-[#E5E7EB]">
+                  {recommendationHistory.map((history) => (
+                    <li className="py-4 first:pt-0 last:pb-0" key={history.id}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-bold text-[#1E2A38]">{history.title}</p>
+                          <p className="mt-1 text-sm leading-6 text-[#6B7280]">{history.reason}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-[#E5E7EB] px-3 py-1 text-xs text-[#6B7280]">
+                          {formatDate(history.generatedAt)}
+                        </span>
                       </div>
-                      <span className="shrink-0 rounded-full border border-[#E5E7EB] px-3 py-1 text-xs text-[#6B7280]">
-                        {formatDate(history.generatedAt)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs font-semibold text-[#4CAF50]">{history.source}</p>
-                  </li>
-                ))}
-              </ol>
+                      <p className="mt-2 text-xs font-semibold text-[#4CAF50]">{history.source}</p>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
 
             <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
               <p className="text-sm font-semibold text-[#F59E0B]">저장한 책</p>
               <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">다음에 읽을 후보</h2>
-              <div className="mt-5 space-y-4">
-                {savedBooks.map((book) => (
-                  <div className="border-b border-[#E5E7EB] pb-4 last:border-b-0 last:pb-0" key={book.id}>
-                    <p className="font-semibold text-[#1E2A38]">{book.title}</p>
-                    <p className="mt-1 text-sm text-[#6B7280]">{book.author}</p>
-                    <p className="mt-2 text-xs font-semibold text-[#4CAF50]">{book.recommendationReason}</p>
-                  </div>
-                ))}
-              </div>
+              {!isLoading && savedBooks.length === 0 ? (
+                <div className="mt-5">
+                  <EmptyState
+                    actionLabel="읽을 책 찾기"
+                    message="나중에 읽을 책은 책 상세에서 저장할 수 있습니다."
+                    to="/rankings"
+                  />
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {savedBooks.map((book) => (
+                    <div className="border-b border-[#E5E7EB] pb-4 last:border-b-0 last:pb-0" key={book.id}>
+                      <p className="font-semibold text-[#1E2A38]">{book.title}</p>
+                      <p className="mt-1 text-sm text-[#6B7280]">{book.author}</p>
+                      <p className="mt-2 text-xs font-semibold text-[#4CAF50]">{book.recommendationReason}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </aside>
           </section>
         </div>
