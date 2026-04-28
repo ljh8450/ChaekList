@@ -39,6 +39,10 @@ public record BookSummaryResponse(
 ) {
 
 	public static BookSummaryResponse from(Book book) {
+		return from(book, book.recommendationReason());
+	}
+
+	public static BookSummaryResponse from(Book book, String recommendationReason) {
 		return new BookSummaryResponse(
 				book.id(),
 				null,
@@ -51,7 +55,7 @@ public record BookSummaryResponse(
 				book.views(),
 				book.saves(),
 				"+" + book.growthRate() + "%",
-				book.recommendationReason()
+				recommendationReason
 		);
 	}
 
