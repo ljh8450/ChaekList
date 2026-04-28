@@ -282,6 +282,65 @@ class BookControllerTest {
 
 	@Test
 	@Transactional
+	void returnsPersonalHomeRecommendationFromSavedBookCategory() throws Exception {
+		createUserInterestCategoriesTable();
+		createUserBookInteractionsTable();
+		long userId = userId();
+		String accessToken = loginAndExtractAccessToken();
+
+		insertCategory(501, "경제");
+		insertCategory(502, "인문");
+		insertKeyword(511, "투자");
+		insertBook(521, "저장한 투자 책", true);
+		insertBook(522, "저장 기반 경제 후보", true);
+		insertBook(523, "다른 분야 후보", true);
+		insertBookCategory(521, 501);
+		insertBookCategory(522, 501);
+		insertBookCategory(523, 502);
+		insertBookKeyword(521, 511);
+		insertBookKeyword(522, 511);
+		insertInteraction(userId, 521, "SAVE", "2026-04-22 10:00:00");
+
+		mockMvc.perform(get("/api/me/home")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.todayRecommendation.id", is("522")))
+				.andExpect(jsonPath("$.todayRecommendation.recommendationReason",
+						is("저장한 책과 비슷한 경제 분야의 다음 후보입니다.")));
+	}
+
+	@Test
+	@Transactional
+	void ignoresUnsavedBookForPersonalHomeRecommendation() throws Exception {
+		createUserInterestCategoriesTable();
+		createUserBookInteractionsTable();
+		long userId = userId();
+		String accessToken = loginAndExtractAccessToken();
+
+		insertCategory(531, "경제");
+		insertKeyword(541, "투자");
+		insertBook(551, "저장 취소한 책", true);
+		insertBook(552, "저장 취소 기반 후보", true);
+		insertBook(553, "랭킹 fallback 후보", true);
+		insertBookCategory(551, 531);
+		insertBookCategory(552, 531);
+		insertBookCategory(553, 531);
+		insertBookKeyword(551, 541);
+		insertBookKeyword(552, 541);
+		insertInteraction(userId, 551, "SAVE", "2026-04-22 10:00:00");
+		insertInteraction(userId, 551, "UNSAVE", "2026-04-22 10:01:00");
+		insertRankingSnapshot(561, 553, null, 1);
+
+		mockMvc.perform(get("/api/me/home")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.todayRecommendation.id", is("553")))
+				.andExpect(jsonPath("$.todayRecommendation.recommendationReason",
+						is("랭킹 지표와 교양 필터링 기준을 반영한 책입니다.")));
+	}
+
+	@Test
+	@Transactional
 	void excludesDismissedBookFromPersonalHomeRecommendation() throws Exception {
 		createUserInterestCategoriesTable();
 		createUserBookInteractionsTable();
