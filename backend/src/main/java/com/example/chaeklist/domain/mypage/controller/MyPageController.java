@@ -3,6 +3,8 @@ package com.example.chaeklist.domain.mypage.controller;
 import java.util.Map;
 
 import com.example.chaeklist.domain.auth.util.TokenService;
+import com.example.chaeklist.domain.mypage.dto.BookInteractionRequest;
+import com.example.chaeklist.domain.mypage.dto.BookInteractionResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
@@ -19,6 +21,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -89,6 +93,22 @@ public class MyPageController {
 		return new OnboardingStatusResponse(true);
 	}
 
+	@PostMapping("/api/me/books/{bookId}/interactions")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "책 행동 기록", description = "현재 사용자의 책 저장, 저장 취소, 읽음 행동을 기록하고 최신 상태를 반환합니다.")
+	@ApiResponse(responseCode = "200", description = "책 행동 기록 성공")
+	@ApiResponse(responseCode = "400", description = "지원하지 않는 interaction type")
+	@ApiResponse(responseCode = "401", description = "Bearer token 누락, 만료 또는 검증 실패")
+	@ApiResponse(responseCode = "404", description = "존재하지 않거나 교양 대상이 아닌 책")
+	public BookInteractionResponse saveBookInteraction(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@Parameter(description = "책 ID", example = "301") @PathVariable String bookId,
+			@RequestBody BookInteractionRequest request
+	) {
+		AuthenticatedUser user = authenticate(authorizationHeader);
+		return myPageService.saveBookInteraction(user, bookId, request);
+	}
+
 	private AuthenticatedUser authenticate(String authorizationHeader) {
 		String token = bearerTokenResolver.resolve(authorizationHeader)
 				.orElseThrow(() -> new UnauthorizedException("Bearer token is required."));
@@ -108,6 +128,16 @@ public class MyPageController {
 	@ExceptionHandler(MyPageService.OnboardingRequestException.class)
 	public ResponseEntity<Map<String, String>> handleBadRequest(MyPageService.OnboardingRequestException exception) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler(MyPageService.BookInteractionRequestException.class)
+	public ResponseEntity<Map<String, String>> handleInteractionBadRequest(MyPageService.BookInteractionRequestException exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler(MyPageService.BookInteractionBookNotFoundException.class)
+	public ResponseEntity<Map<String, String>> handleInteractionNotFound(MyPageService.BookInteractionBookNotFoundException exception) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", exception.getMessage()));
 	}
 
 	static class UnauthorizedException extends RuntimeException {

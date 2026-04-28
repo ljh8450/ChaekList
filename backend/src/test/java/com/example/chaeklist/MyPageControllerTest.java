@@ -162,6 +162,185 @@ class MyPageControllerTest {
 				.andExpect(jsonPath("$.message", is("Unsupported category id.")));
 	}
 
+	@Test
+	void savesAndUnsavesBookInteraction() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertBook(904, "저장 행동 테스트 책", "윤지후");
+		insertBookCategory(904, 801);
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "SAVE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookId", is("904")))
+				.andExpect(jsonPath("$.saved", is(true)))
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "SAVE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.saved", is(true)));
+
+		org.assertj.core.api.Assertions.assertThat(countInteractions(userId, 904, "SAVE")).isEqualTo(1);
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.savedBooks[?(@.id == '904')]", hasSize(1)));
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "UNSAVE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookId", is("904")))
+				.andExpect(jsonPath("$.saved", is(false)))
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.savedBooks[?(@.id == '904')]", hasSize(0)));
+	}
+
+	@Test
+	void marksBookAsReadWithoutDuplicateRows() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertBook(904, "읽음 행동 테스트 책", "윤지후");
+		insertBookCategory(904, 801);
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "READ"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookId", is("904")))
+				.andExpect(jsonPath("$.saved", is(false)))
+				.andExpect(jsonPath("$.read", is(true)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "READ"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.read", is(true)));
+
+		org.assertj.core.api.Assertions.assertThat(countInteractions(userId, 904, "READ")).isEqualTo(1);
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readBooks[?(@.id == '904')]", hasSize(1)));
+	}
+
+	@Test
+	void dismissesBookWithoutDuplicateRows() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertBook(904, "관심 없음 테스트 책", "윤지후");
+		insertBookCategory(904, 801);
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "DISMISS"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookId", is("904")))
+				.andExpect(jsonPath("$.saved", is(false)))
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(true)));
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "DISMISS"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.dismissed", is(true)));
+
+		org.assertj.core.api.Assertions.assertThat(countInteractions(userId, 904, "DISMISS")).isEqualTo(1);
+	}
+
+	@Test
+	void rejectsUnsupportedBookInteractionType() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "903")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "IGNORE"
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Unsupported interaction type.")));
+	}
+
+	@Test
+	void rejectsBookInteractionWithoutBearerToken() throws Exception {
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "903")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "SAVE"
+								}
+								"""))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message", is("Bearer token is required.")));
+	}
+
+	@Test
+	void rejectsBookInteractionForMissingBook() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "999999")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "SAVE"
+								}
+								"""))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.message", is("Book not found.")));
+	}
+
 	private String loginAndExtractAccessToken() throws Exception {
 		String responseBody = mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -269,5 +448,15 @@ class MyPageControllerTest {
 				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, generated_at)
 				VALUES (?, ?, 'CONTENT_BASED', '인문 관심 분야와 읽은 책 기록을 바탕으로 추천했습니다.', 0.9200, CURRENT_TIMESTAMP)
 				""", userId, bookId);
+	}
+
+	private int countInteractions(long userId, long bookId, String interactionType) {
+		return jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = ?
+				""", Integer.class, userId, bookId, interactionType);
 	}
 }

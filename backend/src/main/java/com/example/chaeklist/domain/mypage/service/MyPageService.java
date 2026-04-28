@@ -12,6 +12,8 @@ import com.example.chaeklist.domain.mypage.dto.MyPageBookResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageInterestResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageRecommendationResponse;
 import com.example.chaeklist.domain.mypage.dto.MyPageResponse;
+import com.example.chaeklist.domain.mypage.dto.BookInteractionRequest;
+import com.example.chaeklist.domain.mypage.dto.BookInteractionResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingBookOptionResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingCategoryOptionResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
@@ -26,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MyPageService {
 
 	private static final int DEFAULT_LIMIT = 20;
+	private static final Set<String> SUPPORTED_BOOK_INTERACTIONS = Set.of("SAVE", "UNSAVE", "READ", "DISMISS");
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -90,6 +93,22 @@ public class MyPageService {
 					updated_at = CURRENT_TIMESTAMP
 				WHERE id = ?
 				""", user.id());
+	}
+
+	@Transactional
+	public BookInteractionResponse saveBookInteraction(AuthenticatedUser user, String bookId, BookInteractionRequest request) {
+		long numericBookId = parseBookId(bookId);
+		validateBook(numericBookId);
+
+		String type = normalizeInteractionType(request == null ? null : request.type());
+		if (!SUPPORTED_BOOK_INTERACTIONS.contains(type)) {
+			throw new BookInteractionRequestException("Unsupported interaction type.");
+		}
+
+		if (shouldInsertInteraction(user.id(), numericBookId, type)) {
+			insertInteraction(user.id(), numericBookId, type);
+		}
+		return getBookInteractionState(user.id(), numericBookId);
 	}
 
 	private List<OnboardingCategoryOptionResponse> getOnboardingCategories() {
@@ -223,6 +242,99 @@ public class MyPageService {
 				""", userId, bookId);
 	}
 
+	private boolean shouldInsertInteraction(long userId, long bookId, String type) {
+		return switch (type) {
+			case "SAVE" -> !isSaved(userId, bookId);
+			case "UNSAVE" -> isSaved(userId, bookId);
+			case "READ" -> !isRead(userId, bookId);
+			case "DISMISS" -> !isDismissed(userId, bookId);
+			default -> false;
+		};
+	}
+
+	private void insertInteraction(long userId, long bookId, String type) {
+		jdbcTemplate.update("""
+				INSERT INTO user_book_interactions (user_id, book_id, interaction_type, created_at)
+				VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+				""", userId, bookId, type);
+	}
+
+	private BookInteractionResponse getBookInteractionState(long userId, long bookId) {
+		return new BookInteractionResponse(String.valueOf(bookId), isSaved(userId, bookId), isRead(userId, bookId), isDismissed(userId, bookId));
+	}
+
+	private boolean isSaved(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions save_interactions
+				LEFT JOIN user_book_interactions later_unsave
+					ON later_unsave.user_id = save_interactions.user_id
+					AND later_unsave.book_id = save_interactions.book_id
+					AND later_unsave.interaction_type = 'UNSAVE'
+					AND (
+						later_unsave.created_at > save_interactions.created_at
+						OR (
+							later_unsave.created_at = save_interactions.created_at
+							AND later_unsave.id > save_interactions.id
+						)
+					)
+				WHERE save_interactions.user_id = ?
+					AND save_interactions.book_id = ?
+					AND save_interactions.interaction_type = 'SAVE'
+					AND later_unsave.id IS NULL
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private boolean isRead(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = 'READ'
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private boolean isDismissed(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = 'DISMISS'
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private String normalizeInteractionType(String type) {
+		if (type == null || type.isBlank()) {
+			throw new BookInteractionRequestException("Interaction type is required.");
+		}
+		return type.trim().toUpperCase();
+	}
+
+	private long parseBookId(String bookId) {
+		try {
+			return Long.parseLong(bookId);
+		} catch (NumberFormatException exception) {
+			throw new BookInteractionBookNotFoundException("Book not found.");
+		}
+	}
+
+	private void validateBook(long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM books
+				WHERE id = ?
+					AND is_general_eligible = TRUE
+				""", Integer.class, bookId);
+		if (count == null || count == 0) {
+			throw new BookInteractionBookNotFoundException("Book not found.");
+		}
+	}
+
 	private List<MyPageBookResponse> getBooksByInteraction(long userId, String interactionType, int limit) {
 		return jdbcTemplate.query("""
 				SELECT
@@ -275,7 +387,13 @@ public class MyPageService {
 					ON later_unsave.user_id = save_interactions.user_id
 					AND later_unsave.book_id = save_interactions.book_id
 					AND later_unsave.interaction_type = 'UNSAVE'
-					AND later_unsave.created_at > save_interactions.created_at
+					AND (
+						later_unsave.created_at > save_interactions.created_at
+						OR (
+							later_unsave.created_at = save_interactions.created_at
+							AND later_unsave.id > save_interactions.id
+						)
+					)
 				LEFT JOIN book_categories bc ON bc.book_id = b.id
 				LEFT JOIN categories primary_category ON primary_category.id = bc.category_id
 				LEFT JOIN user_book_interactions view_interactions
@@ -383,6 +501,20 @@ public class MyPageService {
 	public static class OnboardingRequestException extends RuntimeException {
 
 		public OnboardingRequestException(String message) {
+			super(message);
+		}
+	}
+
+	public static class BookInteractionRequestException extends RuntimeException {
+
+		public BookInteractionRequestException(String message) {
+			super(message);
+		}
+	}
+
+	public static class BookInteractionBookNotFoundException extends RuntimeException {
+
+		public BookInteractionBookNotFoundException(String message) {
 			super(message);
 		}
 	}
