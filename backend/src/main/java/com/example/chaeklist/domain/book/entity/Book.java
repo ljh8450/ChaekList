@@ -106,6 +106,10 @@ public class Book {
 		return author;
 	}
 
+	public String coverImageUrl() {
+		return coverImageUrl;
+	}
+
 	public String category() {
 		return categories.stream()
 				.min(Comparator.comparingInt(Category::displayOrder))

@@ -24,6 +24,8 @@ public record BookSummaryResponse(
 		String title,
 		@Schema(description = "저자", example = "문서윤")
 		String author,
+		@Schema(description = "책 표지 이미지 URL", example = "https://example.com/book-cover.jpg", nullable = true)
+		String imageUrl,
 		@Schema(description = "카테고리", example = "인문")
 		String category,
 		@Schema(description = "책 태그", example = "교양 필터 통과")
@@ -50,6 +52,7 @@ public record BookSummaryResponse(
 				null,
 				book.title(),
 				book.author(),
+				book.coverImageUrl(),
 				book.category(),
 				book.tag(),
 				book.views(),
@@ -68,6 +71,7 @@ public record BookSummaryResponse(
 				snapshot.rankDate(),
 				book.title(),
 				book.author(),
+				book.coverImageUrl(),
 				book.category(),
 				book.tag(),
 				formatCount(snapshot.viewCount()),

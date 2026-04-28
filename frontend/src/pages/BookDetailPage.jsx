@@ -51,6 +51,7 @@ export default function BookDetailPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [detailImageFailed, setDetailImageFailed] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -104,6 +105,10 @@ export default function BookDetailPage() {
       ignore = true;
     };
   }, [accessToken, bookId, fallbackBook, isAuthReady, logout]);
+
+  useEffect(() => {
+    setDetailImageFailed(false);
+  }, [book?.imageUrl]);
 
   async function saveInteraction(type) {
     if (!accessToken || !currentUser) {
@@ -198,6 +203,7 @@ export default function BookDetailPage() {
 
   const similarBooks = book.similarBooks?.length ? book.similarBooks : fallbackSimilarBooks;
   const isActionDisabled = Boolean(pendingAction) || !isAuthReady;
+  const showDetailImage = book.imageUrl && !detailImageFailed;
 
   return (
     <section className="mx-auto w-full max-w-6xl px-5 py-8">
@@ -212,9 +218,18 @@ export default function BookDetailPage() {
       ) : null}
 
       <div className="mt-5 grid grid-cols-1 gap-6 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm md:grid-cols-[240px_1fr]">
-        <div className={`flex aspect-[3/4] items-end rounded-lg ${book.cover} p-5 text-lg font-bold text-white shadow-sm`}>
-          {book.category}
-        </div>
+        {showDetailImage ? (
+          <img
+            alt={`${book.title} 표지`}
+            className="aspect-[3/4] w-full rounded-lg object-cover shadow-sm"
+            onError={() => setDetailImageFailed(true)}
+            src={book.imageUrl}
+          />
+        ) : (
+          <div className={`flex aspect-[3/4] items-end rounded-lg ${book.cover} p-5 text-lg font-bold text-white shadow-sm`}>
+            {book.category}
+          </div>
+        )}
         <div>
           <p className="text-sm font-semibold text-[#4CAF50]">{book.tag}</p>
           <h1 className="mt-3 text-3xl font-bold leading-tight text-[#1E2A38]">{book.title}</h1>

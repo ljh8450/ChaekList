@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 export default function BookCard({ book, rank, variant = "default" }) {
@@ -6,6 +7,13 @@ export default function BookCard({ book, rank, variant = "default" }) {
   const growth = book.growth ?? book.growthRate;
   const views = book.views ?? "0";
   const saves = book.saves ?? 0;
+  const imageUrl = book.imageUrl;
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = imageUrl && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   return (
     <Link
@@ -13,9 +21,19 @@ export default function BookCard({ book, rank, variant = "default" }) {
       to={`/books/${book.id}`}
     >
       <div className="flex gap-4">
-        <div className={`flex h-32 w-24 shrink-0 items-end rounded-md ${cover} p-3 text-xs font-semibold text-white shadow-sm`}>
-          {displayRank ? `TOP ${displayRank}` : book.category}
-        </div>
+        {showImage ? (
+          <img
+            alt={`${book.title} 표지`}
+            className="h-32 w-24 shrink-0 rounded-md object-cover shadow-sm"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+            src={imageUrl}
+          />
+        ) : (
+          <div className={`flex h-32 w-24 shrink-0 items-end rounded-md ${cover} p-3 text-xs font-semibold text-white shadow-sm`}>
+            {displayRank ? `TOP ${displayRank}` : book.category}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {displayRank ? <span className="text-sm font-bold text-[#F59E0B]">{displayRank}</span> : null}

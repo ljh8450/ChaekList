@@ -5,8 +5,10 @@ import java.util.Map;
 
 import com.example.chaeklist.domain.auth.util.TokenService;
 import com.example.chaeklist.domain.book.dto.BookDetailResponse;
+import com.example.chaeklist.domain.book.dto.BookImageEnrichmentResponse;
 import com.example.chaeklist.domain.book.dto.BookSummaryResponse;
 import com.example.chaeklist.domain.book.dto.HomeResponse;
+import com.example.chaeklist.domain.book.service.BookImageEnrichmentService;
 import com.example.chaeklist.domain.book.service.BookService;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import com.example.chaeklist.global.auth.BearerTokenResolver;
@@ -15,11 +17,13 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,12 +33,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class BookController {
 
 	private final BearerTokenResolver bearerTokenResolver;
+	private final BookImageEnrichmentService bookImageEnrichmentService;
 	private final BookService bookService;
+	private final String bookImageEnrichmentKey;
 	private final TokenService tokenService;
 
-	public BookController(BearerTokenResolver bearerTokenResolver, BookService bookService, TokenService tokenService) {
+	public BookController(
+			BearerTokenResolver bearerTokenResolver,
+			BookImageEnrichmentService bookImageEnrichmentService,
+			BookService bookService,
+			@Value("${BOOK_IMAGE_ENRICHMENT_KEY:}") String bookImageEnrichmentKey,
+			TokenService tokenService
+	) {
 		this.bearerTokenResolver = bearerTokenResolver;
+		this.bookImageEnrichmentService = bookImageEnrichmentService;
 		this.bookService = bookService;
+		this.bookImageEnrichmentKey = bookImageEnrichmentKey;
 		this.tokenService = tokenService;
 	}
 
@@ -112,6 +126,28 @@ public class BookController {
 				.orElseGet(() -> bookService.getBookDetail(bookId));
 	}
 
+	@PostMapping("/api/books/images/enrich")
+	@Operation(summary = "책 표지 이미지 일괄 보강", description = "cover_image_url이 비어 있는 책을 Kakao 도서 검색 API로 보강합니다.")
+	@ApiResponse(responseCode = "200", description = "이미지 보강 실행 완료")
+	@ApiResponse(responseCode = "401", description = "실행 키 누락 또는 불일치")
+	@ApiResponse(responseCode = "503", description = "이미지 보강 설정 누락")
+	public BookImageEnrichmentResponse enrichBookImages(
+			@Parameter(hidden = true) @RequestHeader(value = "X-Book-Image-Enrichment-Key", required = false) String enrichmentKey,
+			@Parameter(description = "한 번에 처리할 책 수. 최대 50", example = "20") @RequestParam(defaultValue = "20") int limit
+	) {
+		validateBookImageEnrichmentKey(enrichmentKey);
+		return bookImageEnrichmentService.enrichMissingCoverImages(limit);
+	}
+
+	private void validateBookImageEnrichmentKey(String enrichmentKey) {
+		if (bookImageEnrichmentKey == null || bookImageEnrichmentKey.isBlank()) {
+			throw new BookImageEnrichmentService.BookImageEnrichmentException("BOOK_IMAGE_ENRICHMENT_KEY is required.");
+		}
+		if (!bookImageEnrichmentKey.equals(enrichmentKey)) {
+			throw new UnauthorizedException("Invalid book image enrichment key.");
+		}
+	}
+
 	@ExceptionHandler(UnauthorizedException.class)
 	public ResponseEntity<Map<String, String>> handleUnauthorized(UnauthorizedException exception) {
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", exception.getMessage()));
@@ -130,6 +166,13 @@ public class BookController {
 	@ExceptionHandler(BookService.BookRequestException.class)
 	public ResponseEntity<Map<String, String>> handleBadRequest(BookService.BookRequestException exception) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler(BookImageEnrichmentService.BookImageEnrichmentException.class)
+	public ResponseEntity<Map<String, String>> handleBookImageEnrichmentError(
+			BookImageEnrichmentService.BookImageEnrichmentException exception
+	) {
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("message", exception.getMessage()));
 	}
 
 	static class UnauthorizedException extends RuntimeException {
