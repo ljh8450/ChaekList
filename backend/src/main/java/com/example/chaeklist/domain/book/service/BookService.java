@@ -20,6 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BookService {
@@ -51,12 +52,16 @@ public class BookService {
 		return createHomeResponse(false, getDefaultRecommendation().map(BookSummaryResponse::from));
 	}
 
+	@Transactional
 	public HomeResponse getPersonalHome(AuthenticatedUser user) {
 		Optional<BookSummaryResponse> recommendation = getPersonalRecommendation(user.id())
-				.map(personalizedRecommendation -> BookSummaryResponse.from(
-						personalizedRecommendation.book(),
-						personalizedRecommendation.reason()
-				))
+				.map(personalizedRecommendation -> {
+					saveRecommendation(user.id(), personalizedRecommendation);
+					return BookSummaryResponse.from(
+							personalizedRecommendation.book(),
+							personalizedRecommendation.reason()
+					);
+				})
 				.or(() -> getDefaultRecommendation()
 						.map(book -> BookSummaryResponse.from(book, FALLBACK_RECOMMENDATION_REASON)));
 		return createHomeResponse(true, recommendation);
@@ -275,14 +280,22 @@ public class BookService {
 	) {
 		String category = book.category();
 		if (interestCategories.contains(category)) {
-			return "관심 분야로 선택한 " + category + " 분야의 교양 도서입니다.";
+			Optional<String> sharedKeyword = firstSharedKeyword(book.keywords(), readKeywords)
+					.or(() -> firstSharedKeyword(book.keywords(), savedKeywords));
+			return sharedKeyword
+					.map(keyword -> "관심 분야로 선택한 " + category + " 분야와 맞고, " + keyword + " 키워드를 함께 가진 책입니다.")
+					.orElse("관심 분야로 선택한 " + category + " 분야의 교양 도서입니다.");
 		}
 
 		Optional<String> readKeyword = firstSharedKeyword(book.keywords(), readKeywords);
 		if (readKeyword.isPresent()) {
-			return "읽은 책과 " + readKeyword.get() + " 키워드를 공유합니다.";
+			return "읽은 책과 " + readKeyword.get() + " 키워드를 공유해 다음 독서 후보로 추천합니다.";
 		}
 
+		Optional<String> savedKeyword = firstSharedKeyword(book.keywords(), savedKeywords);
+		if (savedKeyword.isPresent()) {
+			return "저장한 책과 " + savedKeyword.get() + " 키워드를 공유합니다.";
+		}
 		if (savedCategories.contains(category)) {
 			return "저장한 책과 비슷한 " + category + " 분야의 다음 후보입니다.";
 		}
@@ -290,10 +303,17 @@ public class BookService {
 			return "읽은 책과 비슷한 " + category + " 분야의 교양 도서입니다.";
 		}
 
-		Optional<String> savedKeyword = firstSharedKeyword(book.keywords(), savedKeywords);
-		return savedKeyword
-				.map(keyword -> "저장한 책과 " + keyword + " 키워드를 공유합니다.")
-				.orElse(FALLBACK_RECOMMENDATION_REASON);
+		return FALLBACK_RECOMMENDATION_REASON;
+	}
+
+	private void saveRecommendation(long userId, PersonalizedRecommendation recommendation) {
+		jdbcTemplate.update("""
+				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, generated_at)
+				VALUES (?, ?, 'CONTENT_BASED', ?, ?, CURRENT_TIMESTAMP)
+				ON DUPLICATE KEY UPDATE
+					reason = VALUES(reason),
+					score = VALUES(score)
+				""", userId, recommendation.book().numericId(), recommendation.reason(), recommendation.score());
 	}
 
 	private Set<String> getInterestCategories(long userId) {

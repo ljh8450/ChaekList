@@ -39,12 +39,14 @@ function createFallbackHome(currentUser) {
 }
 
 function normalizeHomeResponse(data, fallbackHome) {
+  const hasTodayRecommendation = data && Object.prototype.hasOwnProperty.call(data, "todayRecommendation");
+
   return {
     personalized: Boolean(data?.personalized),
-    todayRecommendation: withDisplayDefaults(data?.todayRecommendation) ?? fallbackHome.todayRecommendation,
-    popularBooks: (data?.popularBooks?.length ? data.popularBooks : fallbackHome.popularBooks).map(withDisplayDefaults),
-    trendingBooks: (data?.trendingBooks?.length ? data.trendingBooks : fallbackHome.trendingBooks).map(withDisplayDefaults),
-    categoryRankings: (data?.categoryRankings?.length ? data.categoryRankings : fallbackHome.categoryRankings).map((group) => ({
+    todayRecommendation: hasTodayRecommendation ? withDisplayDefaults(data.todayRecommendation) : fallbackHome.todayRecommendation,
+    popularBooks: (Array.isArray(data?.popularBooks) ? data.popularBooks : fallbackHome.popularBooks).map(withDisplayDefaults),
+    trendingBooks: (Array.isArray(data?.trendingBooks) ? data.trendingBooks : fallbackHome.trendingBooks).map(withDisplayDefaults),
+    categoryRankings: (Array.isArray(data?.categoryRankings) ? data.categoryRankings : fallbackHome.categoryRankings).map((group) => ({
       ...group,
       books: (group.books ?? []).map(withDisplayDefaults),
     })),
@@ -128,9 +130,15 @@ export default function HomePage() {
             {isLoading ? (
               <p className="rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">급상승 도서를 불러오는 중입니다.</p>
             ) : (
-              home.trendingBooks.slice(0, 3).map((book, index) => (
-                <BookCard book={book} key={book.id} rank={book.rankPosition ?? index + 1} variant="trending" />
-              ))
+              home.trendingBooks.length ? (
+                home.trendingBooks.slice(0, 3).map((book, index) => (
+                  <BookCard book={book} key={book.id} rank={book.rankPosition ?? index + 1} variant="trending" />
+                ))
+              ) : (
+                <p className="rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">
+                  아직 급상승 도서 데이터가 없습니다.
+                </p>
+              )
             )}
           </div>
         </div>
@@ -161,7 +169,7 @@ export default function HomePage() {
               <BookCard book={recommendation} />
             ) : (
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 text-sm text-[#6B7280] shadow-sm">
-                아직 표시할 추천 도서가 없습니다.
+                관심 분야, 읽은 책, 저장한 책 기록이 쌓이면 개인 추천이 표시됩니다.
               </div>
             )}
           </div>
@@ -185,17 +193,23 @@ export default function HomePage() {
             {isLoading ? (
               <p className="text-sm text-[#6B7280]">카테고리 랭킹을 불러오는 중입니다.</p>
             ) : (
-              home.categoryRankings.map((group) => (
-                <div className="border-b border-[#E5E7EB] pb-4 last:border-b-0 last:pb-0" key={group.category}>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold text-[#1E2A38]">{group.category}</p>
-                    <Link className="shrink-0 text-xs font-semibold text-[#6B7280] hover:text-[#1E2A38]" to="/categories">
-                      더보기
-                    </Link>
+              home.categoryRankings.length ? (
+                home.categoryRankings.map((group) => (
+                  <div className="border-b border-[#E5E7EB] pb-4 last:border-b-0 last:pb-0" key={group.category}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-[#1E2A38]">{group.category}</p>
+                      <Link className="shrink-0 text-xs font-semibold text-[#6B7280] hover:text-[#1E2A38]" to="/categories">
+                        더보기
+                      </Link>
+                    </div>
+                    <p className="mt-2 line-clamp-1 text-sm text-[#6B7280]">{group.books[0]?.title ?? "준비 중"}</p>
                   </div>
-                  <p className="mt-2 line-clamp-1 text-sm text-[#6B7280]">{group.books[0]?.title ?? "준비 중"}</p>
-                </div>
-              ))
+                ))
+              ) : (
+                <p className="rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">
+                  아직 카테고리 랭킹 데이터가 없습니다.
+                </p>
+              )
             )}
           </div>
         </aside>
@@ -217,7 +231,13 @@ export default function HomePage() {
               인기 도서를 불러오는 중입니다.
             </p>
           ) : (
-            home.popularBooks.map((book, index) => <BookCard book={book} key={book.id} rank={book.rankPosition ?? index + 1} />)
+            home.popularBooks.length ? (
+              home.popularBooks.map((book, index) => <BookCard book={book} key={book.id} rank={book.rankPosition ?? index + 1} />)
+            ) : (
+              <p className="rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280] md:col-span-2 xl:col-span-3">
+                아직 인기 책 데이터가 없습니다.
+              </p>
+            )
           )}
         </div>
       </section>
