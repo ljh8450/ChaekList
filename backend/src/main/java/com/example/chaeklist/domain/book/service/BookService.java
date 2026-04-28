@@ -17,6 +17,7 @@ import com.example.chaeklist.domain.book.repository.CategoryRepository;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -29,15 +30,18 @@ public class BookService {
 	private final BookRepository bookRepository;
 	private final BookRankingSnapshotRepository bookRankingSnapshotRepository;
 	private final CategoryRepository categoryRepository;
+	private final JdbcTemplate jdbcTemplate;
 
 	public BookService(
 			BookRepository bookRepository,
 			BookRankingSnapshotRepository bookRankingSnapshotRepository,
-			CategoryRepository categoryRepository
+			CategoryRepository categoryRepository,
+			JdbcTemplate jdbcTemplate
 	) {
 		this.bookRepository = bookRepository;
 		this.bookRankingSnapshotRepository = bookRankingSnapshotRepository;
 		this.categoryRepository = categoryRepository;
+		this.jdbcTemplate = jdbcTemplate;
 	}
 
 	public HomeResponse getPublicHome() {
@@ -83,6 +87,48 @@ public class BookService {
 				.orElseThrow(() -> new BookNotFoundException("Book not found."));
 		List<Book> similarBooks = findSimilarBooks(book);
 		return BookDetailResponse.from(book, similarBooks);
+	}
+
+	public BookDetailResponse getBookDetail(String bookId, AuthenticatedUser user) {
+		Long id = parseBookId(bookId);
+		Book book = bookRepository.findByIdAndGeneralEligibleTrue(id)
+				.orElseThrow(() -> new BookNotFoundException("Book not found."));
+		List<Book> similarBooks = findSimilarBooks(book);
+		return BookDetailResponse.from(book, similarBooks, isSaved(user.id(), id), isRead(user.id(), id));
+	}
+
+	private boolean isSaved(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions save_interactions
+				LEFT JOIN user_book_interactions later_unsave
+					ON later_unsave.user_id = save_interactions.user_id
+					AND later_unsave.book_id = save_interactions.book_id
+					AND later_unsave.interaction_type = 'UNSAVE'
+					AND (
+						later_unsave.created_at > save_interactions.created_at
+						OR (
+							later_unsave.created_at = save_interactions.created_at
+							AND later_unsave.id > save_interactions.id
+						)
+					)
+				WHERE save_interactions.user_id = ?
+					AND save_interactions.book_id = ?
+					AND save_interactions.interaction_type = 'SAVE'
+					AND later_unsave.id IS NULL
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private boolean isRead(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = 'READ'
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
 	}
 
 	private List<Book> findSimilarBooks(Book book) {
