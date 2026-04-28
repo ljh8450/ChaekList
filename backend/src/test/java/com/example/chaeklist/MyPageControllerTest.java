@@ -180,7 +180,8 @@ class MyPageControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.bookId", is("904")))
 				.andExpect(jsonPath("$.saved", is(true)))
-				.andExpect(jsonPath("$.read", is(false)));
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
 
 		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -211,7 +212,8 @@ class MyPageControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.bookId", is("904")))
 				.andExpect(jsonPath("$.saved", is(false)))
-				.andExpect(jsonPath("$.read", is(false)));
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
 
 		mockMvc.perform(get("/api/me/mypage")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -237,7 +239,8 @@ class MyPageControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.bookId", is("904")))
 				.andExpect(jsonPath("$.saved", is(false)))
-				.andExpect(jsonPath("$.read", is(true)));
+				.andExpect(jsonPath("$.read", is(true)))
+				.andExpect(jsonPath("$.dismissed", is(false)));
 
 		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -259,6 +262,41 @@ class MyPageControllerTest {
 	}
 
 	@Test
+	void dismissesBookWithoutDuplicateRows() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertBook(904, "관심 없음 테스트 책", "윤지후");
+		insertBookCategory(904, 801);
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "DISMISS"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookId", is("904")))
+				.andExpect(jsonPath("$.saved", is(false)))
+				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(true)));
+
+		mockMvc.perform(post("/api/me/books/{bookId}/interactions", "904")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "type": "DISMISS"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.dismissed", is(true)));
+
+		org.assertj.core.api.Assertions.assertThat(countInteractions(userId, 904, "DISMISS")).isEqualTo(1);
+	}
+
+	@Test
 	void rejectsUnsupportedBookInteractionType() throws Exception {
 		String accessToken = loginAndExtractAccessToken();
 
@@ -267,7 +305,7 @@ class MyPageControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "type": "DISMISS"
+								  "type": "IGNORE"
 								}
 								"""))
 				.andExpect(status().isBadRequest())

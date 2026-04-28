@@ -34,14 +34,16 @@ public record BookDetailResponse(
 		@Schema(description = "현재 사용자의 저장 여부", example = "true")
 		boolean saved,
 		@Schema(description = "현재 사용자의 읽음 여부", example = "false")
-		boolean read
+		boolean read,
+		@Schema(description = "현재 사용자의 관심 없음 여부", example = "false")
+		boolean dismissed
 ) {
 
 	public static BookDetailResponse from(Book book, List<Book> similarBooks) {
-		return from(book, similarBooks, false, false);
+		return from(book, similarBooks, false, false, false);
 	}
 
-	public static BookDetailResponse from(Book book, List<Book> similarBooks, boolean saved, boolean read) {
+	public static BookDetailResponse from(Book book, List<Book> similarBooks, boolean saved, boolean read, boolean dismissed) {
 		return new BookDetailResponse(
 				book.id(),
 				book.title(),
@@ -56,7 +58,8 @@ public record BookDetailResponse(
 				book.keywords(),
 				similarBooks.stream().map(BookSummaryResponse::from).toList(),
 				saved,
-				read
+				read,
+				dismissed
 		);
 	}
 }

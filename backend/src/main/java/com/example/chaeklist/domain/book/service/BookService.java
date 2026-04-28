@@ -94,7 +94,7 @@ public class BookService {
 		Book book = bookRepository.findByIdAndGeneralEligibleTrue(id)
 				.orElseThrow(() -> new BookNotFoundException("Book not found."));
 		List<Book> similarBooks = findSimilarBooks(book);
-		return BookDetailResponse.from(book, similarBooks, isSaved(user.id(), id), isRead(user.id(), id));
+		return BookDetailResponse.from(book, similarBooks, isSaved(user.id(), id), isRead(user.id(), id), isDismissed(user.id(), id));
 	}
 
 	private boolean isSaved(long userId, long bookId) {
@@ -127,6 +127,17 @@ public class BookService {
 				WHERE user_id = ?
 					AND book_id = ?
 					AND interaction_type = 'READ'
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private boolean isDismissed(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = 'DISMISS'
 				""", Integer.class, userId, bookId);
 		return count != null && count > 0;
 	}

@@ -165,6 +165,7 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.recommendationReason", is("투자 키워드와 관련된 경제 분야 교양 도서입니다.")))
 				.andExpect(jsonPath("$.saved", is(false)))
 				.andExpect(jsonPath("$.read", is(false)))
+				.andExpect(jsonPath("$.dismissed", is(false)))
 				.andExpect(jsonPath("$.keywords", hasSize(1)))
 				.andExpect(jsonPath("$.keywords[0]", is("투자")))
 				.andExpect(jsonPath("$.similarBooks", hasSize(3)))
@@ -185,13 +186,15 @@ class BookControllerTest {
 		insertBookCategory(311, 111);
 		insertInteraction(userId, 311, "SAVE", "2026-04-22 10:00:00");
 		insertInteraction(userId, 311, "READ", "2026-04-22 10:01:00");
+		insertInteraction(userId, 311, "DISMISS", "2026-04-22 10:02:00");
 
 		mockMvc.perform(get("/api/books/{bookId}", "311")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id", is("311")))
 				.andExpect(jsonPath("$.saved", is(true)))
-				.andExpect(jsonPath("$.read", is(true)));
+				.andExpect(jsonPath("$.read", is(true)))
+				.andExpect(jsonPath("$.dismissed", is(true)));
 	}
 
 	@Test

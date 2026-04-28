@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MyPageService {
 
 	private static final int DEFAULT_LIMIT = 20;
-	private static final Set<String> SUPPORTED_BOOK_INTERACTIONS = Set.of("SAVE", "UNSAVE", "READ");
+	private static final Set<String> SUPPORTED_BOOK_INTERACTIONS = Set.of("SAVE", "UNSAVE", "READ", "DISMISS");
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -247,6 +247,7 @@ public class MyPageService {
 			case "SAVE" -> !isSaved(userId, bookId);
 			case "UNSAVE" -> isSaved(userId, bookId);
 			case "READ" -> !isRead(userId, bookId);
+			case "DISMISS" -> !isDismissed(userId, bookId);
 			default -> false;
 		};
 	}
@@ -259,7 +260,7 @@ public class MyPageService {
 	}
 
 	private BookInteractionResponse getBookInteractionState(long userId, long bookId) {
-		return new BookInteractionResponse(String.valueOf(bookId), isSaved(userId, bookId), isRead(userId, bookId));
+		return new BookInteractionResponse(String.valueOf(bookId), isSaved(userId, bookId), isRead(userId, bookId), isDismissed(userId, bookId));
 	}
 
 	private boolean isSaved(long userId, long bookId) {
@@ -292,6 +293,17 @@ public class MyPageService {
 				WHERE user_id = ?
 					AND book_id = ?
 					AND interaction_type = 'READ'
+				""", Integer.class, userId, bookId);
+		return count != null && count > 0;
+	}
+
+	private boolean isDismissed(long userId, long bookId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND book_id = ?
+					AND interaction_type = 'DISMISS'
 				""", Integer.class, userId, bookId);
 		return count != null && count > 0;
 	}
