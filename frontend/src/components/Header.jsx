@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../App";
 
@@ -8,7 +9,51 @@ const navItems = [
 ];
 
 export default function Header() {
-  const { currentUser, logout } = useAuth();
+  const { accessToken, currentUser, logout } = useAuth();
+  const [primaryBadgeLabel, setPrimaryBadgeLabel] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadPrimaryBadge() {
+      if (!accessToken || !currentUser) {
+        setPrimaryBadgeLabel("");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/me/mypage", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (response.status === 401) {
+          logout();
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to load primary badge.");
+        }
+
+        const data = await response.json();
+        if (!ignore) {
+          setPrimaryBadgeLabel(data.readingGrowth?.primaryBadge?.label ?? "");
+        }
+      } catch {
+        if (!ignore) {
+          setPrimaryBadgeLabel("");
+        }
+      }
+    }
+
+    loadPrimaryBadge();
+
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, currentUser, logout]);
 
   return (
     <header className="sticky top-0 z-10 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
@@ -47,6 +92,11 @@ export default function Header() {
           <div className="flex items-center gap-2">
             {currentUser ? (
               <>
+                {primaryBadgeLabel ? (
+                  <span className="hidden rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32] sm:inline-flex">
+                    {primaryBadgeLabel}
+                  </span>
+                ) : null}
                 <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/mypage">
                   {currentUser.nickname}
                 </Link>
