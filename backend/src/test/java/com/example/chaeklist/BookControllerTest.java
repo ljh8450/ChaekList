@@ -168,6 +168,18 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.dismissed", is(false)))
 				.andExpect(jsonPath("$.keywords", hasSize(1)))
 				.andExpect(jsonPath("$.keywords[0]", is("투자")))
+				.andExpect(jsonPath("$.filterReport.status", is("INCLUDED")))
+				.andExpect(jsonPath("$.filterReport.reason", is("교양 필터 통과")))
+				.andExpect(jsonPath("$.filterReport.category", is("경제")))
+				.andExpect(jsonPath("$.filterReport.keywords[0]", is("투자")))
+				.andExpect(jsonPath("$.recommendationEvidence", hasSize(3)))
+				.andExpect(jsonPath("$.recommendationEvidence[0].type", is("CATEGORY")))
+				.andExpect(jsonPath("$.recommendationEvidence[1].type", is("KEYWORD")))
+				.andExpect(jsonPath("$.recommendationEvidence[2].type", is("FILTER")))
+				.andExpect(jsonPath("$.readingGuide.fit",
+						is("경제 분야에서 투자 키워드를 기준으로 다음 읽을 책을 고르는 사용자에게 맞습니다.")))
+				.andExpect(jsonPath("$.readingGuide.similarityNote",
+						is("비슷한 책과 일부 키워드를 공유해 함께 비교해 볼 수 있습니다.")))
 				.andExpect(jsonPath("$.similarBooks", hasSize(3)))
 				.andExpect(jsonPath("$.similarBooks[0].id", is("302")))
 				.andExpect(jsonPath("$.similarBooks[?(@.id == '301')]", hasSize(0)))
