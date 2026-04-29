@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
+import BookSearchPanel from "../components/BookSearchPanel";
 
 function normalizeCategory(category) {
   return {
@@ -28,6 +29,16 @@ function getInitialCategoryIds(options, myPage) {
 function getInitialBookIds(options, myPage) {
   const readBookIds = new Set((myPage?.readBooks ?? []).map((book) => String(book.id)));
   return options.filter((book) => readBookIds.has(String(book.id))).map((book) => book.id);
+}
+
+function mergeBooks(currentBooks, nextBooks) {
+  const booksById = new Map(currentBooks.map((book) => [String(book.id), book]));
+  nextBooks.forEach((book) => {
+    if (!booksById.has(String(book.id))) {
+      booksById.set(String(book.id), normalizeBook(book));
+    }
+  });
+  return Array.from(booksById.values());
 }
 
 export default function OnboardingPage() {
@@ -107,8 +118,8 @@ export default function OnboardingPage() {
           setSelectedCategoryIds(initialCategoryIds);
           setSelectedBookIds(initialBookIds);
           setIsEditMode(initialCategoryIds.length > 0 || initialBookIds.length > 0);
-          setCanSave(nextCategories.length > 0 && nextBooks.length > 0);
-          if (nextCategories.length === 0 || nextBooks.length === 0) {
+          setCanSave(nextCategories.length > 0);
+          if (nextCategories.length === 0) {
             setMessage("온보딩 선택지가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
           }
         }
@@ -276,6 +287,19 @@ export default function OnboardingPage() {
                 {selectedBookIds.length}권 선택
               </span>
             </div>
+
+            <BookSearchPanel
+              actionLabel="읽은 책 선택"
+              emptyMessage="검색 결과가 없습니다."
+              onResults={(books) => setAvailableBooks((current) => mergeBooks(current, books))}
+              onSelect={(book) => {
+                setAvailableBooks((current) => mergeBooks(current, [book]));
+                setSelectedBookIds((current) => (current.includes(book.id) ? current : [...current, book.id]));
+              }}
+              selectedIds={selectedBookIds}
+              selectedLabel="선택됨"
+              title="읽은 책 검색"
+            />
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
               {availableBooks.length > 0 ? availableBooks.map((book) => {

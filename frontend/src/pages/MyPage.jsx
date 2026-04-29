@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import BookCard from "../components/BookCard";
+import BookSearchPanel from "../components/BookSearchPanel";
 import { useAuth } from "../App";
 
 function formatDate(value) {
@@ -45,6 +46,14 @@ function EmptyState({ message, actionLabel, to }) {
       </Link>
     </div>
   );
+}
+
+function toMyPageBook(book) {
+  return {
+    ...book,
+    reason: book.reason ?? book.recommendationReason,
+    recommendationReason: book.recommendationReason ?? book.reason,
+  };
 }
 
 export default function MyPage() {
@@ -107,6 +116,47 @@ export default function MyPage() {
   const readBooks = myPage?.readBooks ?? [];
   const savedBooks = myPage?.savedBooks ?? [];
   const recommendationHistory = myPage?.recommendationHistory ?? [];
+
+  async function addBookInteraction(book, type) {
+    const response = await fetch(`/api/me/books/${book.id}/interactions`, {
+      body: JSON.stringify({ type }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (response.status === 401) {
+      logout();
+      throw new Error("로그인이 만료되었습니다. 다시 로그인해 주세요.");
+    }
+
+    if (!response.ok) {
+      throw new Error("책 상태를 저장하지 못했습니다.");
+    }
+
+    const normalizedBook = toMyPageBook(book);
+    setMyPage((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (type === "READ") {
+        const hasReadBook = (current.readBooks ?? []).some((item) => String(item.id) === String(book.id));
+        return {
+          ...current,
+          readBooks: hasReadBook ? current.readBooks : [normalizedBook, ...(current.readBooks ?? [])],
+        };
+      }
+
+      const hasSavedBook = (current.savedBooks ?? []).some((item) => String(item.id) === String(book.id));
+      return {
+        ...current,
+        savedBooks: hasSavedBook ? current.savedBooks : [normalizedBook, ...(current.savedBooks ?? [])],
+      };
+    });
+  }
 
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-8">
@@ -209,6 +259,15 @@ export default function MyPage() {
                 읽은 책 수정
               </Link>
             </div>
+            <BookSearchPanel
+              actionLabel="읽은 책 추가"
+              disabledIds={readBooks.map((book) => book.id)}
+              emptyMessage="읽은 책으로 추가할 검색 결과가 없습니다."
+              onSelect={(book) => addBookInteraction(book, "READ")}
+              selectedIds={readBooks.map((book) => book.id)}
+              selectedLabel="이미 읽은 책"
+              title="읽은 책 추가 검색"
+            />
             {!isLoading && readBooks.length === 0 ? (
               <div className="mt-5">
                 <EmptyState
@@ -270,6 +329,15 @@ export default function MyPage() {
             <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
               <p className="text-sm font-semibold text-[#F59E0B]">저장한 책</p>
               <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">다음에 읽을 후보</h2>
+              <BookSearchPanel
+                actionLabel="저장하기"
+                disabledIds={savedBooks.map((book) => book.id)}
+                emptyMessage="저장할 검색 결과가 없습니다."
+                onSelect={(book) => addBookInteraction(book, "SAVE")}
+                selectedIds={savedBooks.map((book) => book.id)}
+                selectedLabel="이미 저장됨"
+                title="저장한 책 추가 검색"
+              />
               {!isLoading && savedBooks.length === 0 ? (
                 <div className="mt-5">
                   <EmptyState
