@@ -113,6 +113,7 @@ export default function MyPage() {
 
   const user = myPage?.user ?? currentUser;
   const interestProfiles = myPage?.interests ?? [];
+  const readingPurposes = myPage?.readingPurposes ?? [];
   const readBooks = myPage?.readBooks ?? [];
   const savedBooks = myPage?.savedBooks ?? [];
   const recommendationHistory = myPage?.recommendationHistory ?? [];
@@ -179,9 +180,10 @@ export default function MyPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-2">
+          <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
             {[
               ["관심", interestProfiles.length],
+              ["목적", readingPurposes.length],
               ["읽은 책", readBooks.length],
               ["추천", recommendationHistory.length],
             ].map(([label, value]) => (
@@ -240,6 +242,40 @@ export default function MyPage() {
                       <div className="h-2 rounded-full bg-[#4CAF50]" style={{ width: `${interest.score}%` }} />
                     </div>
                     <p className="mt-3 text-sm leading-6 text-[#6B7280]">{interest.description}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#1E2A38]">독서 목적</p>
+                <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">추천 이유를 구체화하는 기준</h2>
+              </div>
+              <Link
+                className="inline-flex rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-[#1E2A38] transition hover:border-[#1E2A38]"
+                to="/onboarding?section=reading-purposes"
+              >
+                독서 목적 수정
+              </Link>
+            </div>
+
+            {!isLoading && readingPurposes.length === 0 ? (
+              <div className="mt-5">
+                <EmptyState
+                  actionLabel="독서 목적 선택"
+                  message="독서 목적을 선택하면 추천 이유가 더 구체화됩니다."
+                  to="/onboarding?section=reading-purposes"
+                />
+              </div>
+            ) : (
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                {readingPurposes.map((purpose) => (
+                  <article className="rounded-lg border border-[#E5E7EB] p-4" key={purpose.code}>
+                    <h3 className="font-bold text-[#1E2A38]">{purpose.label}</h3>
+                    <p className="mt-3 text-sm leading-6 text-[#6B7280]">{purpose.description}</p>
                   </article>
                 ))}
               </div>

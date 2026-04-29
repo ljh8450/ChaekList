@@ -414,6 +414,30 @@ class BookControllerTest {
 
 	@Test
 	@Transactional
+	void returnsPersonalHomeRecommendationFromReadingPurpose() throws Exception {
+		createUserInterestCategoriesTable();
+		createUserBookInteractionsTable();
+		long userId = userId();
+		String accessToken = loginAndExtractAccessToken();
+
+		insertCategory(581, "소설");
+		insertCategory(582, "경제");
+		insertBook(591, "가벼운 소설 후보", true);
+		insertBook(592, "경제 후보", true);
+		insertBookCategory(591, 581);
+		insertBookCategory(592, 582);
+		insertReadingPurpose(userId, "LIGHT_READING");
+
+		mockMvc.perform(get("/api/me/home")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.todayRecommendation.id", is("591")))
+				.andExpect(jsonPath("$.todayRecommendation.recommendationReason",
+						is("가벼운 독서 목적에 맞는 소설 분야의 교양 도서입니다.")));
+	}
+
+	@Test
+	@Transactional
 	void ignoresUnsavedBookForPersonalHomeRecommendation() throws Exception {
 		createUserInterestCategoriesTable();
 		createUserBookInteractionsTable();
@@ -531,6 +555,18 @@ class BookControllerTest {
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
+		createUserReadingPurposesTable();
+	}
+
+	private void createUserReadingPurposesTable() {
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_reading_purposes (
+					user_id BIGINT NOT NULL,
+					purpose_code VARCHAR(50) NOT NULL,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (user_id, purpose_code)
+				)
+				""");
 	}
 
 	private long userId() {
@@ -599,6 +635,13 @@ class BookControllerTest {
 				INSERT INTO user_interest_categories (user_id, category_id, created_at)
 				VALUES (?, ?, CURRENT_TIMESTAMP)
 				""", userId, categoryId);
+	}
+
+	private void insertReadingPurpose(long userId, String purposeCode) {
+		jdbcTemplate.update("""
+				INSERT INTO user_reading_purposes (user_id, purpose_code, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", userId, purposeCode);
 	}
 
 	private void insertRankingSnapshot(long id, long bookId, Long categoryId, int rankPosition) {

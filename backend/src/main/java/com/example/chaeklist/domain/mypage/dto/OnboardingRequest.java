@@ -4,6 +4,7 @@ import java.util.List;
 
 public record OnboardingRequest(
 		List<Long> categoryIds,
-		List<Long> readBookIds
+		List<Long> readBookIds,
+		List<String> readingPurposeCodes
 ) {
 }

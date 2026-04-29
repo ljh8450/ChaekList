@@ -19,6 +19,7 @@ import com.example.chaeklist.domain.book.entity.BookRankingSnapshot;
 import com.example.chaeklist.domain.book.repository.BookRankingSnapshotRepository;
 import com.example.chaeklist.domain.book.repository.BookRepository;
 import com.example.chaeklist.domain.book.repository.CategoryRepository;
+import com.example.chaeklist.domain.mypage.model.ReadingPurpose;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -317,6 +318,7 @@ public class BookService {
 
 	private Optional<PersonalizedRecommendation> getPersonalRecommendation(long userId) {
 		Set<String> interestCategories = getInterestCategories(userId);
+		List<ReadingPurpose> readingPurposes = getReadingPurposes(userId);
 		List<Book> readBooks = getInteractedBooks(userId, "READ");
 		List<Book> savedBooks = getSavedBooks(userId);
 		Set<Long> excludedBookIds = getExcludedBookIds(userId);
@@ -331,6 +333,7 @@ public class BookService {
 				.map(book -> scorePersonalizedRecommendation(
 						book,
 						interestCategories,
+						readingPurposes,
 						readCategories,
 						savedCategories,
 						readKeywords,
@@ -344,6 +347,7 @@ public class BookService {
 	private Optional<PersonalizedRecommendation> scorePersonalizedRecommendation(
 			Book book,
 			Set<String> interestCategories,
+			List<ReadingPurpose> readingPurposes,
 			Set<String> readCategories,
 			Set<String> savedCategories,
 			Set<String> readKeywords,
@@ -362,17 +366,22 @@ public class BookService {
 		if (savedCategories.contains(category)) {
 			score += 20;
 		}
+		if (matchesPurposeCategory(category, readingPurposes)) {
+			score += 20;
+		}
 
 		int sharedReadKeywords = sharedKeywordCount(keywords, readKeywords);
 		int sharedSavedKeywords = sharedKeywordCount(keywords, savedKeywords);
+		int sharedPurposeKeywords = sharedPurposeKeywordCount(keywords, readingPurposes);
 		score += sharedReadKeywords * 10;
 		score += sharedSavedKeywords * 8;
+		score += sharedPurposeKeywords * 8;
 
 		if (score <= 0) {
 			return Optional.empty();
 		}
 		return Optional.of(new PersonalizedRecommendation(book, recommendationReason(book, interestCategories, readCategories,
-				savedCategories, readKeywords, savedKeywords), score));
+				savedCategories, readKeywords, savedKeywords, readingPurposes), score));
 	}
 
 	private String recommendationReason(
@@ -381,7 +390,8 @@ public class BookService {
 			Set<String> readCategories,
 			Set<String> savedCategories,
 			Set<String> readKeywords,
-			Set<String> savedKeywords
+			Set<String> savedKeywords,
+			List<ReadingPurpose> readingPurposes
 	) {
 		String category = book.category();
 		if (interestCategories.contains(category)) {
@@ -408,6 +418,16 @@ public class BookService {
 			return "읽은 책과 비슷한 " + category + " 분야의 교양 도서입니다.";
 		}
 
+		Optional<ReadingPurpose> categoryPurpose = firstPurposeByCategory(category, readingPurposes);
+		if (categoryPurpose.isPresent()) {
+			return categoryPurpose.get().label() + " 목적에 맞는 " + category + " 분야의 교양 도서입니다.";
+		}
+
+		Optional<String> purposeKeyword = firstSharedPurposeKeyword(book.keywords(), readingPurposes);
+		if (purposeKeyword.isPresent()) {
+			return purposeKeyword.get() + " 키워드가 선택한 독서 목적과 맞아 추천합니다.";
+		}
+
 		return FALLBACK_RECOMMENDATION_REASON;
 	}
 
@@ -429,6 +449,18 @@ public class BookService {
 				WHERE uic.user_id = ?
 					AND c.is_active = TRUE
 				""", String.class, userId));
+	}
+
+	private List<ReadingPurpose> getReadingPurposes(long userId) {
+		return jdbcTemplate.queryForList("""
+				SELECT purpose_code
+				FROM user_reading_purposes
+				WHERE user_id = ?
+				ORDER BY created_at ASC, purpose_code ASC
+				""", String.class, userId).stream()
+				.map(ReadingPurpose::fromCode)
+				.flatMap(Optional::stream)
+				.toList();
 	}
 
 	private List<Book> getInteractedBooks(long userId, String interactionType) {
@@ -497,6 +529,31 @@ public class BookService {
 		return keywords.stream()
 				.filter(referenceKeywords::contains)
 				.findFirst();
+	}
+
+	private boolean matchesPurposeCategory(String category, List<ReadingPurpose> readingPurposes) {
+		return readingPurposes.stream()
+				.anyMatch(purpose -> purpose.categoryNames().contains(category));
+	}
+
+	private int sharedPurposeKeywordCount(List<String> keywords, List<ReadingPurpose> readingPurposes) {
+		Set<String> purposeKeywords = readingPurposes.stream()
+				.flatMap(purpose -> purpose.keywords().stream())
+				.collect(java.util.stream.Collectors.toSet());
+		return sharedKeywordCount(keywords, purposeKeywords);
+	}
+
+	private Optional<ReadingPurpose> firstPurposeByCategory(String category, List<ReadingPurpose> readingPurposes) {
+		return readingPurposes.stream()
+				.filter(purpose -> purpose.categoryNames().contains(category))
+				.findFirst();
+	}
+
+	private Optional<String> firstSharedPurposeKeyword(List<String> keywords, List<ReadingPurpose> readingPurposes) {
+		Set<String> purposeKeywords = readingPurposes.stream()
+				.flatMap(purpose -> purpose.keywords().stream())
+				.collect(java.util.stream.Collectors.toSet());
+		return firstSharedKeyword(keywords, purposeKeywords);
 	}
 
 	private List<BookRankingSnapshot> findRanking(String category, String period, int limit) {

@@ -157,7 +157,7 @@ export default function HomePage() {
           </h1>
           <p className="mt-4 text-sm leading-6 text-[#6B7280]">
             {currentUser
-              ? "관심 분야, 읽은 책, 저장한 책을 바탕으로 오늘의 추천과 추천 이유를 함께 보여줍니다."
+              ? "관심 분야, 독서 목적, 읽은 책, 저장한 책을 바탕으로 오늘의 추천과 추천 이유를 함께 보여줍니다."
               : "현재 인기 책, 급상승 책, 카테고리별 랭킹을 먼저 확인하고 필요할 때 로그인하세요."}
           </p>
           <div className="mt-6">

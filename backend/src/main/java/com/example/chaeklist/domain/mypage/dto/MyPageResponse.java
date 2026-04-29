@@ -11,6 +11,8 @@ public record MyPageResponse(
 		AuthUserResponse user,
 		@Schema(description = "관심 분야")
 		List<MyPageInterestResponse> interests,
+		@Schema(description = "독서 목적")
+		List<ReadingPurposeResponse> readingPurposes,
 		@Schema(description = "읽은 책")
 		List<MyPageBookResponse> readBooks,
 		@Schema(description = "저장한 책")

@@ -19,6 +19,8 @@ import com.example.chaeklist.domain.mypage.dto.OnboardingCategoryOptionResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
 import com.example.chaeklist.domain.mypage.dto.OnboardingStatusResponse;
+import com.example.chaeklist.domain.mypage.dto.ReadingPurposeResponse;
+import com.example.chaeklist.domain.mypage.model.ReadingPurpose;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,7 @@ public class MyPageService {
 		return new MyPageResponse(
 				AuthUserResponse.from(user),
 				getInterests(user.id()),
+				getReadingPurposes(user.id()),
 				getBooksByInteraction(user.id(), "READ", DEFAULT_LIMIT),
 				getSavedBooks(user.id(), DEFAULT_LIMIT),
 				getRecommendationHistory(user.id(), DEFAULT_LIMIT)
@@ -56,13 +59,18 @@ public class MyPageService {
 	}
 
 	public OnboardingOptionsResponse getOnboardingOptions() {
-		return new OnboardingOptionsResponse(getOnboardingCategories(), getOnboardingBooks(DEFAULT_LIMIT));
+		return new OnboardingOptionsResponse(
+				getOnboardingCategories(),
+				getOnboardingBooks(DEFAULT_LIMIT),
+				getReadingPurposeOptions()
+		);
 	}
 
 	@Transactional
 	public void saveOnboarding(AuthenticatedUser user, OnboardingRequest request) {
 		List<Long> categoryIds = normalizeIds(request == null ? null : request.categoryIds());
 		List<Long> readBookIds = normalizeIds(request == null ? null : request.readBookIds());
+		List<ReadingPurpose> readingPurposes = normalizeReadingPurposes(request == null ? null : request.readingPurposeCodes());
 
 		if (categoryIds.isEmpty()) {
 			throw new OnboardingRequestException("At least one category is required.");
@@ -85,6 +93,14 @@ public class MyPageService {
 		jdbcTemplate.update("DELETE FROM user_book_interactions WHERE user_id = ? AND interaction_type = 'READ'", user.id());
 		for (Long bookId : readBookIds) {
 			insertReadInteraction(user.id(), bookId);
+		}
+
+		jdbcTemplate.update("DELETE FROM user_reading_purposes WHERE user_id = ?", user.id());
+		for (ReadingPurpose purpose : readingPurposes) {
+			jdbcTemplate.update("""
+					INSERT INTO user_reading_purposes (user_id, purpose_code, created_at)
+					VALUES (?, ?, CURRENT_TIMESTAMP)
+					""", user.id(), purpose.code());
 		}
 
 		jdbcTemplate.update("""
@@ -167,6 +183,12 @@ public class MyPageService {
 		);
 	}
 
+	private List<ReadingPurposeResponse> getReadingPurposeOptions() {
+		return ReadingPurpose.options().stream()
+				.map(ReadingPurposeResponse::from)
+				.toList();
+	}
+
 	private List<MyPageInterestResponse> getInterests(long userId) {
 		return jdbcTemplate.query("""
 				SELECT
@@ -195,6 +217,19 @@ public class MyPageService {
 		);
 	}
 
+	private List<ReadingPurposeResponse> getReadingPurposes(long userId) {
+		return jdbcTemplate.queryForList("""
+				SELECT purpose_code
+				FROM user_reading_purposes
+				WHERE user_id = ?
+				ORDER BY created_at ASC, purpose_code ASC
+				""", String.class, userId).stream()
+				.map(ReadingPurpose::fromCode)
+				.flatMap(java.util.Optional::stream)
+				.map(ReadingPurposeResponse::from)
+				.toList();
+	}
+
 	private List<Long> normalizeIds(List<Long> ids) {
 		if (ids == null) {
 			return List.of();
@@ -203,6 +238,25 @@ public class MyPageService {
 				.filter(id -> id != null && id > 0)
 				.distinct()
 				.toList();
+	}
+
+	private List<ReadingPurpose> normalizeReadingPurposes(List<String> purposeCodes) {
+		if (purposeCodes == null) {
+			return List.of();
+		}
+
+		List<ReadingPurpose> purposes = purposeCodes.stream()
+				.filter(code -> code != null && !code.isBlank())
+				.map(code -> ReadingPurpose.fromCode(code)
+						.orElseThrow(() -> new OnboardingRequestException("Unsupported reading purpose code.")))
+				.distinct()
+				.toList();
+
+		if (purposes.size() > 3) {
+			throw new OnboardingRequestException("Reading purposes must be 3 or fewer.");
+		}
+
+		return purposes;
 	}
 
 	private void validateCategories(List<Long> categoryIds) {

@@ -52,6 +52,7 @@ class MyPageControllerTest {
 		insertBookCategory(903, 802);
 		insertInterest(userId, 801);
 		insertInterest(userId, 802);
+		insertReadingPurpose(userId, "KNOWLEDGE");
 		insertInteraction(userId, 901, "READ", "2026-04-20 10:00:00");
 		insertInteraction(userId, 901, "VIEW", "2026-04-20 10:01:00");
 		insertInteraction(userId, 902, "SAVE", "2026-04-21 10:00:00");
@@ -69,6 +70,9 @@ class MyPageControllerTest {
 				.andExpect(jsonPath("$.interests", hasSize(2)))
 				.andExpect(jsonPath("$.interests[0].id", is(801)))
 				.andExpect(jsonPath("$.interests[0].label", is("인문")))
+				.andExpect(jsonPath("$.readingPurposes", hasSize(1)))
+				.andExpect(jsonPath("$.readingPurposes[0].code", is("KNOWLEDGE")))
+				.andExpect(jsonPath("$.readingPurposes[0].label", is("지식 확장")))
 				.andExpect(jsonPath("$.readBooks", hasSize(1)))
 				.andExpect(jsonPath("$.readBooks[0].id", is("901")))
 				.andExpect(jsonPath("$.readBooks[0].title", is("느리게 읽는 법")))
@@ -111,7 +115,10 @@ class MyPageControllerTest {
 				.andExpect(jsonPath("$.books[0].title", is("겹치는 분야의 책")))
 				.andExpect(jsonPath("$.books[0].category", is("인문")))
 				.andExpect(jsonPath("$.books[1].id", is("901")))
-				.andExpect(jsonPath("$.books[2].id", is("902")));
+				.andExpect(jsonPath("$.books[2].id", is("902")))
+				.andExpect(jsonPath("$.readingPurposes", hasSize(5)))
+				.andExpect(jsonPath("$.readingPurposes[0].code", is("KNOWLEDGE")))
+				.andExpect(jsonPath("$.readingPurposes[0].label", is("지식 확장")));
 	}
 
 	@Test
@@ -124,7 +131,8 @@ class MyPageControllerTest {
 						.content("""
 								{
 								  "categoryIds": [801],
-								  "readBookIds": [902]
+								  "readBookIds": [902],
+								  "readingPurposeCodes": ["ECONOMY_INVESTING", "TREND_TRACKING"]
 								}
 								"""))
 				.andExpect(status().isOk())
@@ -141,8 +149,29 @@ class MyPageControllerTest {
 				.andExpect(jsonPath("$.interests", hasSize(1)))
 				.andExpect(jsonPath("$.interests[0].id", is(801)))
 				.andExpect(jsonPath("$.interests[0].label", is("인문")))
+				.andExpect(jsonPath("$.readingPurposes", hasSize(2)))
+				.andExpect(jsonPath("$.readingPurposes[0].code", is("ECONOMY_INVESTING")))
+				.andExpect(jsonPath("$.readingPurposes[1].code", is("TREND_TRACKING")))
 				.andExpect(jsonPath("$.readBooks", hasSize(1)))
 				.andExpect(jsonPath("$.readBooks[0].id", is("902")));
+	}
+
+	@Test
+	void rejectsUnsupportedReadingPurposeCode() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+
+		mockMvc.perform(put("/api/me/onboarding")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "categoryIds": [801],
+								  "readBookIds": [902],
+								  "readingPurposeCodes": ["UNKNOWN"]
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Unsupported reading purpose code.")));
 	}
 
 	@Test
@@ -388,6 +417,14 @@ class MyPageControllerTest {
 					generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_reading_purposes (
+					user_id BIGINT NOT NULL,
+					purpose_code VARCHAR(50) NOT NULL,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (user_id, purpose_code)
+				)
+				""");
 	}
 
 	private long userId() {
@@ -434,6 +471,13 @@ class MyPageControllerTest {
 				INSERT INTO user_interest_categories (user_id, category_id, created_at)
 				VALUES (?, ?, CURRENT_TIMESTAMP)
 				""", userId, categoryId);
+	}
+
+	private void insertReadingPurpose(long userId, String purposeCode) {
+		jdbcTemplate.update("""
+				INSERT INTO user_reading_purposes (user_id, purpose_code, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", userId, purposeCode);
 	}
 
 	private void insertInteraction(long userId, long bookId, String interactionType, String createdAt) {
