@@ -188,7 +188,12 @@ export default function HomePage() {
 
         <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-[#1E2A38]">카테고리별 랭킹</p>
-          <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">교양 독서 기준 TOP 리스트</h2>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-[#1E2A38]">교양 독서 기준 TOP 리스트</h2>
+            <Link className="shrink-0 text-xs font-semibold text-[#6B7280] hover:text-[#1E2A38]" to="/categories">
+              더보기
+            </Link>
+          </div>
           <div className="mt-5 space-y-4">
             {isLoading ? (
               <p className="text-sm text-[#6B7280]">카테고리 랭킹을 불러오는 중입니다.</p>
@@ -196,12 +201,7 @@ export default function HomePage() {
               home.categoryRankings.length ? (
                 home.categoryRankings.map((group) => (
                   <div className="border-b border-[#E5E7EB] pb-4 last:border-b-0 last:pb-0" key={group.category}>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-[#1E2A38]">{group.category}</p>
-                      <Link className="shrink-0 text-xs font-semibold text-[#6B7280] hover:text-[#1E2A38]" to="/categories">
-                        더보기
-                      </Link>
-                    </div>
+                    <p className="font-semibold text-[#1E2A38]">{group.category}</p>
                     <p className="mt-2 line-clamp-1 text-sm text-[#6B7280]">{group.books[0]?.title ?? "준비 중"}</p>
                   </div>
                 ))
