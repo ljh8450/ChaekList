@@ -101,6 +101,17 @@ public class BookController {
 		return bookService.getCategories();
 	}
 
+	@GetMapping("/api/books/search")
+	@Operation(summary = "책 검색", description = "교양 필터를 통과한 책을 제목 또는 저자로 검색합니다.")
+	@ApiResponse(responseCode = "200", description = "책 검색 성공")
+	@ApiResponse(responseCode = "400", description = "검색어가 비어 있거나 너무 짧음")
+	public List<BookSummaryResponse> searchBooks(
+			@Parameter(description = "검색어. 최소 2자", example = "투자") @RequestParam String query,
+			@Parameter(description = "반환 개수. 최대 20", example = "10") @RequestParam(defaultValue = "10") int limit
+	) {
+		return bookService.searchBooks(query, limit);
+	}
+
 	@GetMapping("/api/books/categories/{category}/rankings")
 	@Operation(summary = "카테고리별 랭킹 조회", description = "특정 카테고리의 랭킹 목록을 반환합니다.")
 	@ApiResponse(responseCode = "200", description = "카테고리 랭킹 조회 성공")
