@@ -123,6 +123,62 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void searchesBooksByTitle() throws Exception {
+		insertCategory(701, "경제");
+		insertBook(711, "조용한 투자 습관", true);
+		insertBook(712, "투자 제외 도서", false);
+		insertBook(713, "느리게 읽는 힘", true);
+		insertBookCategory(711, 701);
+		insertBookCategory(712, 701);
+		insertBookCategory(713, 701);
+
+		mockMvc.perform(get("/api/books/search")
+						.param("query", "투자")
+						.param("limit", "10"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is("711")))
+				.andExpect(jsonPath("$[0].title", is("조용한 투자 습관")))
+				.andExpect(jsonPath("$[0].category", is("경제")))
+				.andExpect(jsonPath("$[0].recommendationReason",
+						is("최근 경제 분야에서 교양 필터를 통과해 추천됩니다.")));
+	}
+
+	@Test
+	@Transactional
+	void searchesBooksByAuthor() throws Exception {
+		insertBookWithAuthor(721, "철학 입문", "김투자", true);
+		insertBookWithAuthor(722, "경제 입문", "다른 저자", true);
+
+		mockMvc.perform(get("/api/books/search")
+						.param("query", "김투자"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is("721")))
+				.andExpect(jsonPath("$[0].author", is("김투자")));
+	}
+
+	@Test
+	@Transactional
+	void returnsEmptySearchResult() throws Exception {
+		insertBook(731, "읽을 만한 책", true);
+
+		mockMvc.perform(get("/api/books/search")
+						.param("query", "없는검색어"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
+	void rejectsShortSearchQuery() throws Exception {
+		mockMvc.perform(get("/api/books/search")
+						.param("query", "투"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Search query must be at least 2 characters.")));
+	}
+
+	@Test
 	void rejectsUnknownCategoryRankings() throws Exception {
 		mockMvc.perform(get("/api/books/categories/{category}/rankings", "경제")
 						.param("period", "weekly"))
@@ -506,6 +562,15 @@ class BookControllerTest {
 				)
 				VALUES (?, ?, '테스트 저자', '상세 설명', ?, 'INCLUDED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", id, title, generalEligible);
+	}
+
+	private void insertBookWithAuthor(long id, String title, String author, boolean generalEligible) {
+		jdbcTemplate.update("""
+				INSERT INTO books (
+					id, title, author, description, is_general_eligible, filter_status, created_at, updated_at
+				)
+				VALUES (?, ?, ?, '상세 설명', ?, 'INCLUDED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, title, author, generalEligible);
 	}
 
 	private void insertBookCategory(long bookId, long categoryId) {

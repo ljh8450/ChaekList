@@ -33,6 +33,9 @@ public class BookService {
 	private static final int SIMILAR_BOOK_LIMIT = 3;
 	private static final int SIMILAR_BOOK_CANDIDATE_LIMIT = 50;
 	private static final int PERSONAL_RECOMMENDATION_CANDIDATE_LIMIT = 50;
+	private static final int SEARCH_DEFAULT_LIMIT = 10;
+	private static final int SEARCH_MAX_LIMIT = 20;
+	private static final int SEARCH_MIN_QUERY_LENGTH = 2;
 	private static final String FALLBACK_RECOMMENDATION_REASON = "랭킹 지표와 교양 필터링 기준을 반영한 책입니다.";
 
 	private final BookRepository bookRepository;
@@ -88,6 +91,13 @@ public class BookService {
 	public List<String> getCategories() {
 		return categoryRepository.findByActiveTrueOrderByDisplayOrderAsc().stream()
 				.map(category -> category.name())
+				.toList();
+	}
+
+	public List<BookSummaryResponse> searchBooks(String query, int limit) {
+		String normalizedQuery = normalizeSearchQuery(query);
+		return bookRepository.searchGeneralEligibleByTitleOrAuthor(normalizedQuery, pageById(normalizeSearchLimit(limit))).stream()
+				.map(BookSummaryResponse::from)
 				.toList();
 	}
 
@@ -510,6 +520,20 @@ public class BookService {
 			return 10;
 		}
 		return Math.min(limit, 50);
+	}
+
+	private int normalizeSearchLimit(int limit) {
+		if (limit <= 0) {
+			return SEARCH_DEFAULT_LIMIT;
+		}
+		return Math.min(limit, SEARCH_MAX_LIMIT);
+	}
+
+	private String normalizeSearchQuery(String query) {
+		if (query == null || query.trim().length() < SEARCH_MIN_QUERY_LENGTH) {
+			throw new BookRequestException("Search query must be at least 2 characters.");
+		}
+		return query.trim();
 	}
 
 	private void validateCategory(String category, boolean allowAll) {
