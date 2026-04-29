@@ -12,6 +12,12 @@ const coverPalette = {
   자기계발: "bg-[#F59E0B]",
 };
 
+const evidenceStyles = {
+  CATEGORY: "border-[#4CAF50]/30 bg-[#4CAF50]/10 text-[#2f6f34]",
+  KEYWORD: "border-[#F59E0B]/30 bg-[#F59E0B]/10 text-[#9a6207]",
+  FILTER: "border-[#1E2A38]/20 bg-[#1E2A38]/5 text-[#1E2A38]",
+};
+
 function withDisplayDefaults(book) {
   if (!book) {
     return null;
@@ -24,10 +30,120 @@ function withDisplayDefaults(book) {
     keywords: book.keywords ?? [],
     reason: book.reason ?? book.recommendationReason,
     similarBooks: (book.similarBooks ?? []).map(withDisplayDefaults),
+    filterReport: book.filterReport
+      ? {
+          ...book.filterReport,
+          keywords: book.filterReport.keywords ?? [],
+        }
+      : null,
+    recommendationEvidence: book.recommendationEvidence ?? [],
+    readingGuide: book.readingGuide ?? null,
     saved: Boolean(book.saved),
     read: Boolean(book.read),
     dismissed: Boolean(book.dismissed),
   };
+}
+
+function hasFilterReport(report) {
+  return Boolean(report?.status || report?.reason || report?.category || report?.keywords?.length);
+}
+
+function hasReadingGuide(readingGuide) {
+  return Boolean(readingGuide?.fit || readingGuide?.similarityNote);
+}
+
+function FilterReportSection({ report }) {
+  if (!hasFilterReport(report)) {
+    return null;
+  }
+
+  const fields = [
+    ["상태", report.status],
+    ["대표 분야", report.category],
+    ["판단 근거", report.reason],
+  ].filter(([, value]) => value);
+
+  return (
+    <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+      <div>
+        <p className="text-sm font-semibold text-[#4CAF50]">교양 필터 리포트</p>
+        <h2 className="mt-1 text-xl font-bold text-[#1E2A38]">이 책이 상세 후보에 오른 이유</h2>
+      </div>
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {fields.map(([label, value]) => (
+          <div className="rounded-md border border-[#E5E7EB] p-4" key={label}>
+            <p className="text-xs font-semibold text-[#6B7280]">{label}</p>
+            <p className="mt-2 text-sm font-bold text-[#1E2A38]">{value}</p>
+          </div>
+        ))}
+      </div>
+      {report.keywords?.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {report.keywords.slice(0, 6).map((keyword) => (
+            <span className="rounded-full border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]" key={keyword}>
+              {keyword}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RecommendationEvidenceSection({ evidence }) {
+  const visibleEvidence = (evidence ?? []).filter((item) => item?.label || item?.description).slice(0, 3);
+  if (!visibleEvidence.length) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+      <div>
+        <p className="text-sm font-semibold text-[#4CAF50]">추천 근거</p>
+        <h2 className="mt-1 text-xl font-bold text-[#1E2A38]">어떤 기준으로 볼 만한 책인가</h2>
+      </div>
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {visibleEvidence.map((item, index) => (
+          <article
+            className={`rounded-md border p-4 ${evidenceStyles[item.type] ?? "border-[#E5E7EB] bg-white text-[#1E2A38]"}`}
+            key={`${item.type ?? "EVIDENCE"}-${index}`}
+          >
+            {item.label ? <h3 className="text-sm font-bold">{item.label}</h3> : null}
+            {item.description ? <p className="mt-2 text-sm leading-6 text-[#6B7280]">{item.description}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReadingGuideSection({ readingGuide }) {
+  if (!hasReadingGuide(readingGuide)) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+      <div>
+        <p className="text-sm font-semibold text-[#4CAF50]">읽을 책 결정 보조</p>
+        <h2 className="mt-1 text-xl font-bold text-[#1E2A38]">고르기 전에 볼 포인트</h2>
+      </div>
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+        {readingGuide.fit ? (
+          <div className="rounded-md border border-[#E5E7EB] p-4">
+            <p className="text-xs font-semibold text-[#6B7280]">맞는 사용자</p>
+            <p className="mt-2 text-sm leading-6 text-[#111827]">{readingGuide.fit}</p>
+          </div>
+        ) : null}
+        {readingGuide.similarityNote ? (
+          <div className="rounded-md border border-[#E5E7EB] p-4">
+            <p className="text-xs font-semibold text-[#6B7280]">비슷한 책과 비교</p>
+            <p className="mt-2 text-sm leading-6 text-[#111827]">{readingGuide.similarityNote}</p>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 export default function BookDetailPage() {
@@ -294,6 +410,14 @@ export default function BookDetailPage() {
           ) : null}
         </div>
       </div>
+
+      {hasFilterReport(book.filterReport) || book.recommendationEvidence?.length || hasReadingGuide(book.readingGuide) ? (
+        <div className="mt-6 grid grid-cols-1 gap-4">
+          <FilterReportSection report={book.filterReport} />
+          <RecommendationEvidenceSection evidence={book.recommendationEvidence} />
+          <ReadingGuideSection readingGuide={book.readingGuide} />
+        </div>
+      ) : null}
 
       {similarBooks.length ? (
         <section className="mt-6">
