@@ -43,7 +43,7 @@ README의 MVP와 핵심 해결책을 기준으로 1차 MVP는 다음 축으로 �
 
 - 홈 개인화 추천은 관심 분야, 읽은 책, 저장한 책의 카테고리/키워드를 기반으로 점수를 계산한다.
 - 추천 결과는 `recommendations`에 `CONTENT_BASED` 유형으로 저장된다.
-- 마이페이지에서 추천 히스토리 reason, source, score, generatedAt을 확인할 수 있다.
+- 마이페이지에서 추천 히스토리 reason, source, score, createdAt을 확인할 수 있다.
 - `READ`, `DISMISS` 책은 개인 추천 후보에서 제외된다.
 
 확장 확인 필요:

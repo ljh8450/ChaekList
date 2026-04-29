@@ -433,7 +433,7 @@ public class BookService {
 
 	private void saveRecommendation(long userId, PersonalizedRecommendation recommendation) {
 		jdbcTemplate.update("""
-				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, generated_at)
+				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, created_at)
 				VALUES (?, ?, 'CONTENT_BASED', ?, ?, CURRENT_TIMESTAMP)
 				ON DUPLICATE KEY UPDATE
 					reason = VALUES(reason),

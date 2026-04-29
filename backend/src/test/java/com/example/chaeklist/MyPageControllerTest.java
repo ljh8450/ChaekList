@@ -414,7 +414,7 @@ class MyPageControllerTest {
 					recommendation_type VARCHAR(30) NOT NULL,
 					reason VARCHAR(255),
 					score DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-					generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
 		jdbcTemplate.execute("""
@@ -489,7 +489,7 @@ class MyPageControllerTest {
 
 	private void insertRecommendation(long userId, long bookId) {
 		jdbcTemplate.update("""
-				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, generated_at)
+				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, created_at)
 				VALUES (?, ?, 'CONTENT_BASED', '인문 관심 분야와 읽은 책 기록을 바탕으로 추천했습니다.', 0.9200, CURRENT_TIMESTAMP)
 				""", userId, bookId);
 	}

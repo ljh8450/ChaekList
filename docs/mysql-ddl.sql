@@ -208,7 +208,7 @@ CREATE TABLE recommendations (
   recommendation_type VARCHAR(30) NOT NULL,
   reason VARCHAR(255) NULL,
   score DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-  generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   UNIQUE KEY uk_recommendations_user_book_type (user_id, book_id, recommendation_type),
   KEY idx_recommendations_user_score (user_id, score),

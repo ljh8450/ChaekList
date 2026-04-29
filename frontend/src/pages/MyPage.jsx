@@ -344,9 +344,9 @@ export default function MyPage() {
                           </Link>
                           <p className="mt-1 break-keep text-sm leading-6 text-[#6B7280]">{history.reason}</p>
                         </div>
-                        {formatDate(history.generatedAt) ? (
+                        {formatDate(history.createdAt) ? (
                           <span className="shrink-0 rounded-full border border-[#E5E7EB] px-3 py-1 text-xs text-[#6B7280]">
-                            {formatDate(history.generatedAt)}
+                            {formatDate(history.createdAt)}
                           </span>
                         ) : null}
                       </div>

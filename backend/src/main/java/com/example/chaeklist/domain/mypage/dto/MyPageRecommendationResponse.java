@@ -19,6 +19,6 @@ public record MyPageRecommendationResponse(
 		@Schema(description = "추천 점수", example = "92")
 		int score,
 		@Schema(description = "추천 생성 시각")
-		LocalDateTime generatedAt
+		LocalDateTime createdAt
 ) {
 }

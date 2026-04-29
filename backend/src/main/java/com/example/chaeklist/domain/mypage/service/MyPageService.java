@@ -492,12 +492,12 @@ public class MyPageService {
 					r.recommendation_type,
 					COALESCE(NULLIF(r.reason, ''), '사용자 관심 분야와 도서 행동을 바탕으로 추천했습니다.') AS reason,
 					r.score,
-					r.generated_at
+					r.created_at
 				FROM recommendations r
 				JOIN books b ON b.id = r.book_id
 				WHERE r.user_id = ?
 					AND b.is_general_eligible = TRUE
-				ORDER BY r.generated_at DESC, r.score DESC, r.id DESC
+				ORDER BY r.created_at DESC, r.score DESC, r.id DESC
 				LIMIT ?
 				""",
 				(resultSet, rowNumber) -> new MyPageRecommendationResponse(
@@ -507,7 +507,7 @@ public class MyPageService {
 						resultSet.getString("reason"),
 						resultSet.getString("recommendation_type"),
 						toRecommendationScore(resultSet.getDouble("score")),
-						readLocalDateTime(resultSet, "generated_at")
+						readLocalDateTime(resultSet, "created_at")
 				),
 				userId,
 				limit
