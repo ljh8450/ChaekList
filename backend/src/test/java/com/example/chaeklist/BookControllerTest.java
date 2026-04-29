@@ -173,6 +173,32 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void usesOnlyTrendKeywordWhenSameKeywordNameHasDifferentTypes() throws Exception {
+		insertCategory(681, "경제");
+		insertKeywordWithType(691, "투자", "TREND");
+		insertKeywordWithType(692, "투자", "GENERAL");
+		insertBook(701, "트렌드 투자 책", true);
+		insertBook(702, "일반 투자 키워드 책", true);
+		insertBookCategory(701, 681);
+		insertBookCategory(702, 681);
+		insertBookKeyword(701, 691);
+		insertBookKeyword(702, 692);
+		insertRankingSnapshot(711, 701, null, 1);
+		insertRankingSnapshot(712, 702, null, 2);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "5")
+						.param("booksPerKeyword", "5"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.keyword == '투자')]", hasSize(1)))
+				.andExpect(jsonPath("$[0].keyword", is("투자")))
+				.andExpect(jsonPath("$[0].bookCount", is(1)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '701')]", hasSize(1)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '702')]", hasSize(0)));
+	}
+
+	@Test
 	void returnsEmptyKeywordTrends() throws Exception {
 		mockMvc.perform(get("/api/books/trends/keywords"))
 				.andExpect(status().isOk())
