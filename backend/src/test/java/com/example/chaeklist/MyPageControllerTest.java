@@ -80,7 +80,38 @@ class MyPageControllerTest {
 				.andExpect(jsonPath("$.savedBooks[0].id", is("902")))
 				.andExpect(jsonPath("$.recommendationHistory", hasSize(1)))
 				.andExpect(jsonPath("$.recommendationHistory[0].title", is("느리게 읽는 법")))
-				.andExpect(jsonPath("$.recommendationHistory[0].source", is("CONTENT_BASED")));
+				.andExpect(jsonPath("$.recommendationHistory[0].source", is("CONTENT_BASED")))
+				.andExpect(jsonPath("$.readingGrowth.level", is(2)))
+				.andExpect(jsonPath("$.readingGrowth.primaryBadge.code", is("FIRST_READ")))
+				.andExpect(jsonPath("$.readingGrowth.monthlyReadCount", is(1)))
+				.andExpect(jsonPath("$.readingGrowth.categoryDiversityCount", is(1)))
+				.andExpect(jsonPath("$.readingGrowth.badges[0].code", is("FIRST_READ")));
+	}
+
+	@Test
+	void returnsReadingGrowthWithPrimaryBadgeAndCalculatedMetrics() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertCategory(803, "사회");
+		insertBook(904, "사회 읽기", "차민서");
+		insertBookCategory(904, 803);
+		insertInteraction(userId, 902, "READ", "2026-04-22 10:00:00");
+		insertInteraction(userId, 904, "READ", "2026-04-23 10:00:00");
+		insertRecommendation(userId, 902, "2026-04-20 09:00:00");
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readingGrowth.level", is(4)))
+				.andExpect(jsonPath("$.readingGrowth.primaryBadge.code", is("PURPOSE_MATCH")))
+				.andExpect(jsonPath("$.readingGrowth.monthlyReadCount", is(3)))
+				.andExpect(jsonPath("$.readingGrowth.savedToReadCount", is(1)))
+				.andExpect(jsonPath("$.readingGrowth.categoryDiversityCount", is(3)))
+				.andExpect(jsonPath("$.readingGrowth.recommendationConversionCount", is(1)))
+				.andExpect(jsonPath("$.readingGrowth.badges[?(@.code == 'CATEGORY_EXPLORER')]", hasSize(1)))
+				.andExpect(jsonPath("$.readingGrowth.badges[?(@.code == 'SAVED_TO_READ')]", hasSize(1)))
+				.andExpect(jsonPath("$.readingGrowth.badges[?(@.code == 'RECOMMENDATION_FOLLOWER')]", hasSize(1)))
+				.andExpect(jsonPath("$.readingGrowth.badges[?(@.code == 'PURPOSE_MATCH')]", hasSize(1)));
 	}
 
 	@Test
@@ -488,10 +519,14 @@ class MyPageControllerTest {
 	}
 
 	private void insertRecommendation(long userId, long bookId) {
+		insertRecommendation(userId, bookId, "2026-04-25 09:00:00");
+	}
+
+	private void insertRecommendation(long userId, long bookId, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, created_at)
-				VALUES (?, ?, 'CONTENT_BASED', '인문 관심 분야와 읽은 책 기록을 바탕으로 추천했습니다.', 0.9200, CURRENT_TIMESTAMP)
-				""", userId, bookId);
+				VALUES (?, ?, 'CONTENT_BASED', '인문 관심 분야와 읽은 책 기록을 바탕으로 추천했습니다.', 0.9200, ?)
+				""", userId, bookId, createdAt);
 	}
 
 	private int countInteractions(long userId, long bookId, String interactionType) {
