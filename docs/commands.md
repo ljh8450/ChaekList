@@ -34,6 +34,15 @@ npm run start
 
 위치: `backend/`
 
+### 환경 파일 초기화
+
+backend 환경 파일을 초기화하거나 갱신할 때 실행합니다.
+
+```powershell
+cd backend
+.\scripts\init-env.ps1
+```
+
 ### 테스트 실행
 
 backend 코드를 변경한 뒤 실행합니다.
