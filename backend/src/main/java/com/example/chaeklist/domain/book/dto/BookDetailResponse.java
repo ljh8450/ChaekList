@@ -48,10 +48,23 @@ public record BookDetailResponse(
 ) {
 
 	public static BookDetailResponse from(Book book, List<Book> similarBooks) {
-		return from(book, similarBooks, false, false, false);
+		return from(book, similarBooks, null, List.of(), null, false, false, false);
 	}
 
 	public static BookDetailResponse from(Book book, List<Book> similarBooks, boolean saved, boolean read, boolean dismissed) {
+		return from(book, similarBooks, null, List.of(), null, saved, read, dismissed);
+	}
+
+	public static BookDetailResponse from(
+			Book book,
+			List<Book> similarBooks,
+			FilterReport filterReport,
+			List<RecommendationEvidence> recommendationEvidence,
+			ReadingGuide readingGuide,
+			boolean saved,
+			boolean read,
+			boolean dismissed
+	) {
 		return new BookDetailResponse(
 				book.id(),
 				book.title(),
@@ -66,85 +79,13 @@ public record BookDetailResponse(
 				"+" + book.growthRate() + "%",
 				book.keywords(),
 				similarBooks.stream().map(BookSummaryResponse::from).toList(),
-				createFilterReport(book),
-				createRecommendationEvidence(book),
-				createReadingGuide(book, similarBooks),
+				filterReport,
+				recommendationEvidence,
+				readingGuide,
 				saved,
 				read,
 				dismissed
 		);
-	}
-
-	private static FilterReport createFilterReport(Book book) {
-		return new FilterReport(
-				book.filterStatus(),
-				book.tag(),
-				"미분류".equals(book.category()) ? null : book.category(),
-				book.keywords()
-		);
-	}
-
-	private static List<RecommendationEvidence> createRecommendationEvidence(Book book) {
-		List<String> keywords = book.keywords();
-		java.util.ArrayList<RecommendationEvidence> evidence = new java.util.ArrayList<>();
-		if (!"미분류".equals(book.category())) {
-			evidence.add(new RecommendationEvidence(
-					"CATEGORY",
-					"관심 분야",
-					book.category() + " 분야 책을 찾는 사용자에게 맞는 후보입니다."
-			));
-		}
-		if (!keywords.isEmpty()) {
-			evidence.add(new RecommendationEvidence(
-					"KEYWORD",
-					"공통 키워드",
-					keywords.getFirst() + " 키워드를 중심으로 탐색할 수 있는 책입니다."
-			));
-		}
-		if (book.generalEligible()) {
-			evidence.add(new RecommendationEvidence(
-					"FILTER",
-					"교양 필터",
-					book.tag() + " 기준으로 상세 후보에 포함되었습니다."
-			));
-		}
-		return evidence.stream().limit(3).toList();
-	}
-
-	private static ReadingGuide createReadingGuide(Book book, List<Book> similarBooks) {
-		String fit = createFit(book);
-		String similarityNote = createSimilarityNote(book, similarBooks);
-		if (fit == null && similarityNote == null) {
-			return null;
-		}
-		return new ReadingGuide(fit, similarityNote);
-	}
-
-	private static String createFit(Book book) {
-		if (!"미분류".equals(book.category()) && !book.keywords().isEmpty()) {
-			return book.category() + " 분야에서 " + book.keywords().getFirst() + " 키워드를 기준으로 다음 읽을 책을 고르는 사용자에게 맞습니다.";
-		}
-		if (!"미분류".equals(book.category())) {
-			return book.category() + " 분야의 교양 도서를 찾는 사용자에게 맞습니다.";
-		}
-		return null;
-	}
-
-	private static String createSimilarityNote(Book book, List<Book> similarBooks) {
-		if (similarBooks.isEmpty()) {
-			return null;
-		}
-		Book similarBook = similarBooks.getFirst();
-		long sharedKeywordCount = similarBook.keywords().stream()
-				.filter(book.keywords()::contains)
-				.count();
-		if (sharedKeywordCount > 0) {
-			return "비슷한 책과 일부 키워드를 공유해 함께 비교해 볼 수 있습니다.";
-		}
-		if (book.category().equals(similarBook.category())) {
-			return "비슷한 책과 같은 분야에 속하지만 키워드 구성은 다를 수 있습니다.";
-		}
-		return null;
 	}
 
 	@Schema(description = "교양 필터 리포트")
@@ -164,7 +105,7 @@ public record BookDetailResponse(
 	public record RecommendationEvidence(
 			@Schema(description = "근거 유형", example = "CATEGORY")
 			String type,
-			@Schema(description = "근거 제목", example = "관심 분야")
+			@Schema(description = "근거 제목", example = "대표 분야")
 			String label,
 			@Schema(description = "근거 설명")
 			String description

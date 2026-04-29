@@ -1,5 +1,6 @@
 package com.example.chaeklist.domain.book.service;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -7,6 +8,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import com.example.chaeklist.domain.book.dto.BookDetailResponse;
+import com.example.chaeklist.domain.book.dto.BookDetailResponse.FilterReport;
+import com.example.chaeklist.domain.book.dto.BookDetailResponse.ReadingGuide;
+import com.example.chaeklist.domain.book.dto.BookDetailResponse.RecommendationEvidence;
 import com.example.chaeklist.domain.book.dto.BookSummaryResponse;
 import com.example.chaeklist.domain.book.dto.CategoryRankingResponse;
 import com.example.chaeklist.domain.book.dto.HomeResponse;
@@ -100,7 +104,7 @@ public class BookService {
 		Book book = bookRepository.findByIdAndGeneralEligibleTrue(id)
 				.orElseThrow(() -> new BookNotFoundException("Book not found."));
 		List<Book> similarBooks = findSimilarBooks(book);
-		return BookDetailResponse.from(book, similarBooks);
+		return createBookDetailResponse(book, similarBooks, false, false, false);
 	}
 
 	public BookDetailResponse getBookDetail(String bookId, AuthenticatedUser user) {
@@ -108,7 +112,98 @@ public class BookService {
 		Book book = bookRepository.findByIdAndGeneralEligibleTrue(id)
 				.orElseThrow(() -> new BookNotFoundException("Book not found."));
 		List<Book> similarBooks = findSimilarBooks(book);
-		return BookDetailResponse.from(book, similarBooks, isSaved(user.id(), id), isRead(user.id(), id), isDismissed(user.id(), id));
+		return createBookDetailResponse(book, similarBooks, isSaved(user.id(), id), isRead(user.id(), id), isDismissed(user.id(), id));
+	}
+
+	private BookDetailResponse createBookDetailResponse(
+			Book book,
+			List<Book> similarBooks,
+			boolean saved,
+			boolean read,
+			boolean dismissed
+	) {
+		return BookDetailResponse.from(
+				book,
+				similarBooks,
+				createFilterReport(book),
+				createRecommendationEvidence(book),
+				createReadingGuide(book, similarBooks),
+				saved,
+				read,
+				dismissed
+		);
+	}
+
+	private FilterReport createFilterReport(Book book) {
+		return new FilterReport(
+				book.filterStatus(),
+				book.tag(),
+				"미분류".equals(book.category()) ? null : book.category(),
+				book.keywords()
+		);
+	}
+
+	private List<RecommendationEvidence> createRecommendationEvidence(Book book) {
+		List<String> keywords = book.keywords();
+		ArrayList<RecommendationEvidence> evidence = new ArrayList<>();
+		if (!"미분류".equals(book.category())) {
+			evidence.add(new RecommendationEvidence(
+					"CATEGORY",
+					"대표 분야",
+					book.category() + " 분야의 교양 도서를 찾을 때 비교할 수 있는 후보입니다."
+			));
+		}
+		if (!keywords.isEmpty()) {
+			evidence.add(new RecommendationEvidence(
+					"KEYWORD",
+					"공통 키워드",
+					keywords.getFirst() + " 키워드를 중심으로 탐색할 수 있는 책입니다."
+			));
+		}
+		if (book.generalEligible()) {
+			evidence.add(new RecommendationEvidence(
+					"FILTER",
+					"교양 필터",
+					book.tag() + " 기준으로 상세 후보에 포함되었습니다."
+			));
+		}
+		return evidence.stream().limit(3).toList();
+	}
+
+	private ReadingGuide createReadingGuide(Book book, List<Book> similarBooks) {
+		String fit = createFit(book);
+		String similarityNote = createSimilarityNote(book, similarBooks);
+		if (fit == null && similarityNote == null) {
+			return null;
+		}
+		return new ReadingGuide(fit, similarityNote);
+	}
+
+	private String createFit(Book book) {
+		if (!"미분류".equals(book.category()) && !book.keywords().isEmpty()) {
+			return book.category() + " 분야에서 " + book.keywords().getFirst() + " 키워드를 기준으로 다음 읽을 책을 고르는 사용자에게 맞습니다.";
+		}
+		if (!"미분류".equals(book.category())) {
+			return book.category() + " 분야의 교양 도서를 찾는 사용자에게 맞습니다.";
+		}
+		return null;
+	}
+
+	private String createSimilarityNote(Book book, List<Book> similarBooks) {
+		if (similarBooks.isEmpty()) {
+			return null;
+		}
+		Book similarBook = similarBooks.getFirst();
+		long sharedKeywordCount = similarBook.keywords().stream()
+				.filter(book.keywords()::contains)
+				.count();
+		if (sharedKeywordCount > 0) {
+			return "비슷한 책과 일부 키워드를 공유해 함께 비교해 볼 수 있습니다.";
+		}
+		if (book.category().equals(similarBook.category())) {
+			return "비슷한 책과 같은 분야에 속하지만 키워드 구성은 다를 수 있습니다.";
+		}
+		return null;
 	}
 
 	private boolean isSaved(long userId, long bookId) {
