@@ -343,7 +343,7 @@ class BookControllerTest {
 		org.assertj.core.api.Assertions.assertThat(countRecommendations(userId, 411)).isEqualTo(1);
 		org.assertj.core.api.Assertions.assertThat(recommendationReason(userId, 411))
 				.isEqualTo("관심 분야로 선택한 경제 분야의 교양 도서입니다.");
-		java.time.LocalDateTime firstGeneratedAt = recommendationGeneratedAt(userId, 411);
+		java.time.LocalDateTime firstCreatedAt = recommendationCreatedAt(userId, 411);
 
 		mockMvc.perform(get("/api/me/home")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -351,7 +351,7 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.todayRecommendation.id", is("411")));
 
 		org.assertj.core.api.Assertions.assertThat(countRecommendations(userId, 411)).isEqualTo(1);
-		org.assertj.core.api.Assertions.assertThat(recommendationGeneratedAt(userId, 411)).isEqualTo(firstGeneratedAt);
+		org.assertj.core.api.Assertions.assertThat(recommendationCreatedAt(userId, 411)).isEqualTo(firstCreatedAt);
 	}
 
 	@Test
@@ -410,6 +410,30 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.todayRecommendation.id", is("522")))
 				.andExpect(jsonPath("$.todayRecommendation.recommendationReason",
 						is("저장한 책과 투자 키워드를 공유합니다.")));
+	}
+
+	@Test
+	@Transactional
+	void returnsPersonalHomeRecommendationFromReadingPurpose() throws Exception {
+		createUserInterestCategoriesTable();
+		createUserBookInteractionsTable();
+		long userId = userId();
+		String accessToken = loginAndExtractAccessToken();
+
+		insertCategory(581, "소설");
+		insertCategory(582, "경제");
+		insertBook(591, "가벼운 소설 후보", true);
+		insertBook(592, "경제 후보", true);
+		insertBookCategory(591, 581);
+		insertBookCategory(592, 582);
+		insertReadingPurpose(userId, "LIGHT_READING");
+
+		mockMvc.perform(get("/api/me/home")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.todayRecommendation.id", is("591")))
+				.andExpect(jsonPath("$.todayRecommendation.recommendationReason",
+						is("가벼운 독서 목적에 맞는 소설 분야의 교양 도서입니다.")));
 	}
 
 	@Test
@@ -531,6 +555,18 @@ class BookControllerTest {
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
+		createUserReadingPurposesTable();
+	}
+
+	private void createUserReadingPurposesTable() {
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_reading_purposes (
+					user_id BIGINT NOT NULL,
+					purpose_code VARCHAR(50) NOT NULL,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (user_id, purpose_code)
+				)
+				""");
 	}
 
 	private long userId() {
@@ -601,6 +637,13 @@ class BookControllerTest {
 				""", userId, categoryId);
 	}
 
+	private void insertReadingPurpose(long userId, String purposeCode) {
+		jdbcTemplate.update("""
+				INSERT INTO user_reading_purposes (user_id, purpose_code, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", userId, purposeCode);
+	}
+
 	private void insertRankingSnapshot(long id, long bookId, Long categoryId, int rankPosition) {
 		jdbcTemplate.update("""
 				INSERT INTO book_ranking_snapshots (
@@ -631,7 +674,7 @@ class BookControllerTest {
 					recommendation_type VARCHAR(30) NOT NULL,
 					reason VARCHAR(255),
 					score DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-					generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					CONSTRAINT uk_recommendations_user_book_type UNIQUE (user_id, book_id, recommendation_type)
 				)
 				""");
@@ -657,9 +700,9 @@ class BookControllerTest {
 				""", String.class, userId, bookId);
 	}
 
-	private java.time.LocalDateTime recommendationGeneratedAt(long userId, long bookId) {
+	private java.time.LocalDateTime recommendationCreatedAt(long userId, long bookId) {
 		java.sql.Timestamp timestamp = jdbcTemplate.queryForObject("""
-				SELECT generated_at
+				SELECT created_at
 				FROM recommendations
 				WHERE user_id = ?
 					AND book_id = ?

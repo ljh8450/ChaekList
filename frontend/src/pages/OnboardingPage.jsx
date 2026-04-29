@@ -21,9 +21,22 @@ function normalizeBook(book) {
   };
 }
 
+function normalizeReadingPurpose(purpose) {
+  return {
+    code: purpose.code ?? purpose.purposeCode,
+    label: purpose.label ?? purpose.name ?? "독서 목적",
+    description: purpose.description ?? "선택한 독서 목적을 추천 이유에 반영합니다.",
+  };
+}
+
 function getInitialCategoryIds(options, myPage) {
   const interestIds = new Set((myPage?.interests ?? []).map((interest) => String(interest.id)));
   return options.filter((category) => interestIds.has(String(category.id))).map((category) => category.id);
+}
+
+function getInitialReadingPurposeCodes(options, myPage) {
+  const purposeCodes = new Set((myPage?.readingPurposes ?? []).map((purpose) => String(purpose.code)));
+  return options.filter((purpose) => purposeCodes.has(String(purpose.code))).map((purpose) => purpose.code);
 }
 
 function getInitialBookIds(options, myPage) {
@@ -47,8 +60,10 @@ export default function OnboardingPage() {
   const navigate = useNavigate();
   const [availableCategories, setAvailableCategories] = useState([]);
   const [availableBooks, setAvailableBooks] = useState([]);
+  const [availableReadingPurposes, setAvailableReadingPurposes] = useState([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [selectedBookIds, setSelectedBookIds] = useState([]);
+  const [selectedReadingPurposeCodes, setSelectedReadingPurposeCodes] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,17 +71,25 @@ export default function OnboardingPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [canSave, setCanSave] = useState(false);
 
-  const canSubmit = canSave && selectedCategoryIds.length > 0 && selectedBookIds.length > 0 && !isSubmitting;
+  const canSubmit =
+    canSave &&
+    selectedCategoryIds.length > 0 &&
+    selectedReadingPurposeCodes.length > 0 &&
+    selectedReadingPurposeCodes.length <= 3 &&
+    selectedBookIds.length > 0 &&
+    !isSubmitting;
   const focusedSection = new URLSearchParams(location.search).get("section");
   const isInterestFocused = focusedSection === "interests";
+  const isPurposeFocused = focusedSection === "reading-purposes";
   const isReadBooksFocused = focusedSection === "read-books";
 
   const selectedSummary = useMemo(
     () => ({
       categories: availableCategories.filter((category) => selectedCategoryIds.includes(category.id)),
+      readingPurposes: availableReadingPurposes.filter((purpose) => selectedReadingPurposeCodes.includes(purpose.code)),
       books: availableBooks.filter((book) => selectedBookIds.includes(book.id)),
     }),
-    [availableBooks, availableCategories, selectedBookIds, selectedCategoryIds],
+    [availableBooks, availableCategories, availableReadingPurposes, selectedBookIds, selectedCategoryIds, selectedReadingPurposeCodes],
   );
 
   useEffect(() => {
@@ -107,19 +130,23 @@ export default function OnboardingPage() {
         const options = await optionsResponse.json();
         const nextCategories = (options.categories ?? options.interestCategories ?? []).map(normalizeCategory).filter((category) => category.id);
         const nextBooks = (options.books ?? options.readableBooks ?? []).map(normalizeBook).filter((book) => book.id);
+        const nextReadingPurposes = (options.readingPurposes ?? []).map(normalizeReadingPurpose).filter((purpose) => purpose.code);
         const myPageResponse = await fetch("/api/me/mypage", { headers });
         const myPage = myPageResponse.ok ? await myPageResponse.json() : null;
         const initialCategoryIds = getInitialCategoryIds(nextCategories, myPage);
+        const initialReadingPurposeCodes = getInitialReadingPurposeCodes(nextReadingPurposes, myPage);
         const initialBookIds = getInitialBookIds(nextBooks, myPage);
 
         if (!ignore) {
           setAvailableCategories(nextCategories);
           setAvailableBooks(nextBooks);
+          setAvailableReadingPurposes(nextReadingPurposes);
           setSelectedCategoryIds(initialCategoryIds);
+          setSelectedReadingPurposeCodes(initialReadingPurposeCodes);
           setSelectedBookIds(initialBookIds);
-          setIsEditMode(initialCategoryIds.length > 0 || initialBookIds.length > 0);
-          setCanSave(nextCategories.length > 0);
-          if (nextCategories.length === 0) {
+          setIsEditMode(initialCategoryIds.length > 0 || initialReadingPurposeCodes.length > 0 || initialBookIds.length > 0);
+          setCanSave(nextCategories.length > 0 && nextReadingPurposes.length > 0);
+          if (nextCategories.length === 0 || nextReadingPurposes.length === 0) {
             setMessage("온보딩 선택지가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
           }
         }
@@ -127,6 +154,7 @@ export default function OnboardingPage() {
         if (!ignore) {
           setAvailableCategories([]);
           setAvailableBooks([]);
+          setAvailableReadingPurposes([]);
           setIsEditMode(false);
           setCanSave(false);
           setMessage("온보딩 선택지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -157,6 +185,20 @@ export default function OnboardingPage() {
     setErrorMessage("");
   }
 
+  function toggleReadingPurpose(purposeCode) {
+    setSelectedReadingPurposeCodes((current) => {
+      if (current.includes(purposeCode)) {
+        return current.filter((code) => code !== purposeCode);
+      }
+      if (current.length >= 3) {
+        setErrorMessage("독서 목적은 최대 3개까지 선택할 수 있습니다.");
+        return current;
+      }
+      setErrorMessage("");
+      return [...current, purposeCode];
+    });
+  }
+
   async function submitOnboarding(event) {
     event.preventDefault();
 
@@ -167,6 +209,11 @@ export default function OnboardingPage() {
 
     if (!canSave) {
       setErrorMessage("온보딩 선택지를 불러온 뒤 저장할 수 있습니다.");
+      return;
+    }
+
+    if (selectedReadingPurposeCodes.length === 0) {
+      setErrorMessage("독서 목적을 1개 이상 선택해 주세요.");
       return;
     }
 
@@ -184,6 +231,7 @@ export default function OnboardingPage() {
           body: JSON.stringify({
             categoryIds: selectedCategoryIds,
             readBookIds: selectedBookIds,
+            readingPurposeCodes: selectedReadingPurposeCodes,
           }),
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -218,7 +266,7 @@ export default function OnboardingPage() {
           <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-[#4CAF50]">{isEditMode ? "취향 수정" : "개인화 시작"}</p>
             <h1 className="mt-3 text-3xl font-bold leading-tight text-[#1E2A38]">
-              {isEditMode ? "관심 분야와 읽은 책을 다시 조정해 주세요" : "관심 분야와 읽은 책을 선택해 주세요"}
+              {isEditMode ? "관심 분야, 독서 목적, 읽은 책을 다시 조정해 주세요" : "관심 분야, 독서 목적, 읽은 책을 선택해 주세요"}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#6B7280]">
               {isEditMode
@@ -267,6 +315,49 @@ export default function OnboardingPage() {
               }) : (
                 <p className="rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280] md:col-span-2 xl:col-span-3">
                   선택 가능한 관심 분야를 불러오지 못했습니다.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section
+            className={`rounded-lg border bg-white p-5 shadow-sm ${
+              isPurposeFocused ? "border-[#2563EB] ring-2 ring-[#2563EB]/20" : "border-[#E5E7EB]"
+            }`}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#1E2A38]">독서 목적</p>
+                <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">책을 찾는 이유</h2>
+                {isPurposeFocused ? <p className="mt-2 text-sm text-[#2563EB]">마이페이지에서 독서 목적 수정을 선택했습니다.</p> : null}
+              </div>
+              <span className="rounded-full bg-[#2563EB]/10 px-3 py-2 text-xs font-semibold text-[#1D4ED8]">
+                {selectedReadingPurposeCodes.length}/3개 선택
+              </span>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {availableReadingPurposes.length > 0 ? availableReadingPurposes.map((purpose) => {
+                const isSelected = selectedReadingPurposeCodes.includes(purpose.code);
+
+                return (
+                  <button
+                    className={`rounded-lg border p-4 text-left transition ${
+                      isSelected
+                        ? "border-[#2563EB] bg-[#2563EB]/10"
+                        : "border-[#E5E7EB] bg-white hover:border-[#1E2A38]"
+                    }`}
+                    key={purpose.code}
+                    type="button"
+                    onClick={() => toggleReadingPurpose(purpose.code)}
+                  >
+                    <span className="text-base font-bold text-[#1E2A38]">{purpose.label}</span>
+                    <span className="mt-2 block text-sm leading-6 text-[#6B7280]">{purpose.description}</span>
+                  </button>
+                );
+              }) : (
+                <p className="rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280] md:col-span-2 xl:col-span-3">
+                  선택 가능한 독서 목적을 불러오지 못했습니다.
                 </p>
               )}
             </div>
@@ -349,6 +440,21 @@ export default function OnboardingPage() {
                   selectedSummary.categories.map((category) => (
                     <span className="rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#4CAF50]" key={category.id}>
                       {category.name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-[#6B7280]">아직 선택하지 않았습니다.</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-[#6B7280]">독서 목적</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedSummary.readingPurposes.length > 0 ? (
+                  selectedSummary.readingPurposes.map((purpose) => (
+                    <span className="rounded-full bg-[#2563EB]/10 px-3 py-1 text-xs font-semibold text-[#1D4ED8]" key={purpose.code}>
+                      {purpose.label}
                     </span>
                   ))
                 ) : (

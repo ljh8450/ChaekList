@@ -19,8 +19,8 @@
 - 홈 개인화 추천 이유를 관심 분야, 읽은 책 키워드, 저장한 책 키워드, 읽은 책 카테고리, 저장한 책 카테고리 기준으로 구체화했다.
 - 홈 개인화 추천이 선택되면 `recommendations`에 `CONTENT_BASED` 유형으로 저장한다.
 - `recommendations`의 `(user_id, book_id, recommendation_type)` unique key를 기준으로 중복 저장을 방지한다.
-- 기존 추천이 다시 생성되면 `reason`, `score`만 갱신하고 `generated_at`은 최초 추천 시각으로 유지한다.
-- 마이페이지 추천 히스토리에서 저장된 reason, source, score, generatedAt을 표시한다.
+- 기존 추천이 다시 생성되면 `reason`, `score`만 갱신하고 `created_at`은 최초 추천 시각으로 유지한다.
+- 마이페이지 추천 히스토리에서 저장된 reason, source, score, createdAt을 표시한다.
 - 홈 화면에서 API가 정상적으로 빈 배열이나 `todayRecommendation: null`을 반환할 때 mock 데이터로 덮어쓰지 않도록 정리했다.
 - 홈의 급상승, 인기, 카테고리 랭킹 빈 상태 문구를 추가했다.
 
