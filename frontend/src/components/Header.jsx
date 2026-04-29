@@ -62,19 +62,21 @@ export default function Header() {
           <Link className="inline-flex items-center" to="/" aria-label="ChaekList 홈">
             <img className="h-10 w-10" src="/logo.svg" alt="ChaekList" />
           </Link>
-          <nav className="hidden items-center gap-1 sm:flex">
-            {navItems.map((item) => (
-              <NavLink
-                className={({ isActive }) =>
-                  `rounded-md px-3 py-2 text-sm font-medium transition ${
-                    isActive ? "bg-[#1E2A38] text-white" : "text-[#6B7280] hover:bg-[#F5F3EF] hover:text-[#1E2A38]"
-                  }`
-                }
-                key={item.to}
-                to={item.to}
-              >
-                {item.label}
-              </NavLink>
+          <nav className="hidden items-center sm:flex">
+            {navItems.map((item, index) => (
+              <div className="flex items-center" key={item.to}>
+                {index > 0 ? <span className="mx-1 h-4 w-px bg-[#D1D5DB]" aria-hidden="true" /> : null}
+                <NavLink
+                  className={({ isActive }) =>
+                    `rounded-md px-3 py-2 text-sm font-medium transition ${
+                      isActive ? "bg-[#1E2A38] text-white" : "text-[#6B7280] hover:bg-[#F5F3EF] hover:text-[#1E2A38]"
+                    }`
+                  }
+                  to={item.to}
+                >
+                  {item.label}
+                </NavLink>
+              </div>
             ))}
           </nav>
         </div>
