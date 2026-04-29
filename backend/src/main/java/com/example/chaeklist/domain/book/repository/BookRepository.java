@@ -29,4 +29,30 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 				)
 			""")
 	List<Book> searchGeneralEligibleByTitleOrAuthor(@Param("query") String query, Pageable pageable);
+
+	@Query("""
+			SELECT b
+			FROM Book b
+			JOIN b.keywords keyword
+			LEFT JOIN BookRankingSnapshot snapshot
+				ON snapshot.book = b
+				AND snapshot.category IS NULL
+				AND snapshot.rankingPeriod = :period
+				AND snapshot.rankDate = (
+					SELECT MAX(latest.rankDate)
+					FROM BookRankingSnapshot latest
+					WHERE latest.category IS NULL
+						AND latest.rankingPeriod = :period
+				)
+			WHERE b.generalEligible = TRUE
+				AND keyword.name = :keyword
+			ORDER BY COALESCE(snapshot.recentGrowthRate, 0) DESC,
+				COALESCE(snapshot.rankingScore, 0) DESC,
+				b.id DESC
+			""")
+	List<Book> findTrendingBooksByKeyword(
+			@Param("keyword") String keyword,
+			@Param("period") String period,
+			Pageable pageable
+	);
 }

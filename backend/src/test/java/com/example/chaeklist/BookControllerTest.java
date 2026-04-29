@@ -116,6 +116,46 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void returnsKeywordTrendsWithRepresentativeBooks() throws Exception {
+		insertCategory(601, "경제");
+		insertKeyword(611, "투자");
+		insertKeyword(612, "AI");
+		insertBook(621, "투자 대표 책", true);
+		insertBook(622, "AI 대표 책", true);
+		insertBook(623, "제외될 수험서", false);
+		insertBookCategory(621, 601);
+		insertBookCategory(622, 601);
+		insertBookCategory(623, 601);
+		insertBookKeyword(621, 611);
+		insertBookKeyword(622, 612);
+		insertBookKeyword(623, 611);
+		insertRankingSnapshot(631, 621, null, 2);
+		insertRankingSnapshot(632, 622, null, 1);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "2")
+						.param("booksPerKeyword", "1"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].keyword", is("AI")))
+				.andExpect(jsonPath("$[0].bookCount", is(1)))
+				.andExpect(jsonPath("$[0].trendScore", is("+15%")))
+				.andExpect(jsonPath("$[0].books", hasSize(1)))
+				.andExpect(jsonPath("$[0].books[0].id", is("622")))
+				.andExpect(jsonPath("$[1].keyword", is("투자")))
+				.andExpect(jsonPath("$[1].bookCount", is(1)))
+				.andExpect(jsonPath("$[1].books[?(@.id == '623')]", hasSize(0)));
+	}
+
+	@Test
+	void returnsEmptyKeywordTrends() throws Exception {
+		mockMvc.perform(get("/api/books/trends/keywords"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
 	void returnsCategories() throws Exception {
 		mockMvc.perform(get("/api/books/categories"))
 				.andExpect(status().isOk())
