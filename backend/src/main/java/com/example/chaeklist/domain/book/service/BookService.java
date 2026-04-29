@@ -1,5 +1,6 @@
 package com.example.chaeklist.domain.book.service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -14,6 +15,7 @@ import com.example.chaeklist.domain.book.dto.BookDetailResponse.RecommendationEv
 import com.example.chaeklist.domain.book.dto.BookSummaryResponse;
 import com.example.chaeklist.domain.book.dto.CategoryRankingResponse;
 import com.example.chaeklist.domain.book.dto.HomeResponse;
+import com.example.chaeklist.domain.book.dto.KeywordTrendResponse;
 import com.example.chaeklist.domain.book.entity.Book;
 import com.example.chaeklist.domain.book.entity.BookRankingSnapshot;
 import com.example.chaeklist.domain.book.repository.BookRankingSnapshotRepository;
@@ -37,6 +39,10 @@ public class BookService {
 	private static final int SEARCH_DEFAULT_LIMIT = 10;
 	private static final int SEARCH_MAX_LIMIT = 20;
 	private static final int SEARCH_MIN_QUERY_LENGTH = 2;
+	private static final int KEYWORD_TREND_DEFAULT_LIMIT = 3;
+	private static final int KEYWORD_TREND_MAX_LIMIT = 20;
+	private static final int KEYWORD_TREND_BOOK_DEFAULT_LIMIT = 3;
+	private static final int KEYWORD_TREND_BOOK_MAX_LIMIT = 10;
 	private static final String FALLBACK_RECOMMENDATION_REASON = "랭킹 지표와 교양 필터링 기준을 반영한 책입니다.";
 
 	private final BookRepository bookRepository;
@@ -99,6 +105,59 @@ public class BookService {
 		String normalizedQuery = normalizeSearchQuery(query);
 		return bookRepository.searchGeneralEligibleByTitleOrAuthor(normalizedQuery, pageById(normalizeSearchLimit(limit))).stream()
 				.map(BookSummaryResponse::from)
+				.toList();
+	}
+
+	public List<KeywordTrendResponse> getKeywordTrends(int limit, int booksPerKeyword) {
+		int normalizedLimit = normalizeKeywordTrendLimit(limit);
+		int normalizedBooksPerKeyword = normalizeKeywordTrendBookLimit(booksPerKeyword);
+		String period = normalizePeriod("weekly");
+
+		return jdbcTemplate.query("""
+				SELECT
+					k.name AS keyword_name,
+					COUNT(DISTINCT b.id) AS book_count,
+					COALESCE(MAX(latest_snapshot.recent_growth_rate), 0) AS trend_score
+				FROM keywords k
+				JOIN book_keywords bk ON bk.keyword_id = k.id
+				JOIN books b ON b.id = bk.book_id
+				LEFT JOIN book_ranking_snapshots latest_snapshot
+					ON latest_snapshot.book_id = b.id
+					AND latest_snapshot.category_id IS NULL
+					AND latest_snapshot.ranking_period = ?
+					AND latest_snapshot.rank_date = (
+						SELECT MAX(snapshot.rank_date)
+						FROM book_ranking_snapshots snapshot
+						WHERE snapshot.category_id IS NULL
+							AND snapshot.ranking_period = ?
+					)
+				WHERE b.is_general_eligible = TRUE
+					AND k.keyword_type = 'TREND'
+				GROUP BY k.id, k.name
+				ORDER BY trend_score DESC, book_count DESC, k.name ASC
+				LIMIT ?
+				""",
+				(resultSet, rowNumber) -> new KeywordTrend(
+						resultSet.getString("keyword_name"),
+						resultSet.getInt("book_count"),
+						resultSet.getBigDecimal("trend_score")
+				),
+				period,
+				period,
+				normalizedLimit
+		).stream()
+				.map(keywordTrend -> new KeywordTrendResponse(
+						keywordTrend.keyword(),
+						keywordTrend.bookCount(),
+						formatTrendScore(keywordTrend.trendScore()),
+						bookRepository.findTrendingBooksByKeyword(
+										keywordTrend.keyword(),
+										period,
+										pageById(normalizedBooksPerKeyword)
+								).stream()
+								.map(BookSummaryResponse::from)
+								.toList()
+				))
 				.toList();
 	}
 
@@ -586,6 +645,24 @@ public class BookService {
 		return Math.min(limit, SEARCH_MAX_LIMIT);
 	}
 
+	private int normalizeKeywordTrendLimit(int limit) {
+		if (limit <= 0) {
+			return KEYWORD_TREND_DEFAULT_LIMIT;
+		}
+		return Math.min(limit, KEYWORD_TREND_MAX_LIMIT);
+	}
+
+	private int normalizeKeywordTrendBookLimit(int limit) {
+		if (limit <= 0) {
+			return KEYWORD_TREND_BOOK_DEFAULT_LIMIT;
+		}
+		return Math.min(limit, KEYWORD_TREND_BOOK_MAX_LIMIT);
+	}
+
+	private String formatTrendScore(BigDecimal score) {
+		return "%+.0f%%".formatted(score == null ? 0 : score.doubleValue());
+	}
+
 	private String normalizeSearchQuery(String query) {
 		if (query == null || query.trim().length() < SEARCH_MIN_QUERY_LENGTH) {
 			throw new BookRequestException("Search query must be at least 2 characters.");
@@ -636,5 +713,8 @@ public class BookService {
 	}
 
 	private record PersonalizedRecommendation(Book book, String reason, int score) {
+	}
+
+	private record KeywordTrend(String keyword, int bookCount, BigDecimal trendScore) {
 	}
 }

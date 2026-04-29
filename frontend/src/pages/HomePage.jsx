@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../App";
 import BookCard from "../components/BookCard";
-import { books, categoryRankings, trendingBooks } from "../data/books";
+import { books, categoryRankings, keywordTrends as fallbackKeywordTrends, trendingBooks } from "../data/books";
 
 const coverPalette = {
   경제: "bg-[#4CAF50]",
@@ -53,11 +53,20 @@ function normalizeHomeResponse(data, fallbackHome) {
   };
 }
 
+function normalizeKeywordTrend(trend) {
+  return {
+    ...trend,
+    books: (trend.books ?? []).map(withDisplayDefaults),
+  };
+}
+
 export default function HomePage() {
   const { accessToken, currentUser, isAuthReady, logout } = useAuth();
   const fallbackHome = useMemo(() => createFallbackHome(currentUser), [currentUser]);
   const [home, setHome] = useState(fallbackHome);
+  const [keywordTrends, setKeywordTrends] = useState(fallbackKeywordTrends.map(normalizeKeywordTrend));
   const [status, setStatus] = useState("loading");
+  const [trendStatus, setTrendStatus] = useState("loading");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -111,8 +120,46 @@ export default function HomePage() {
     };
   }, [accessToken, currentUser, fallbackHome, isAuthReady, logout]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadKeywordTrends() {
+      setTrendStatus("loading");
+
+      try {
+        const params = new URLSearchParams({
+          limit: "3",
+          booksPerKeyword: "2",
+        });
+        const response = await fetch(`/api/books/trends/keywords?${params.toString()}`);
+
+        if (!response.ok) {
+          throw new Error("키워드 트렌드를 불러오지 못했습니다.");
+        }
+
+        const data = await response.json();
+        if (!ignore) {
+          setKeywordTrends((Array.isArray(data) ? data : []).map(normalizeKeywordTrend));
+          setTrendStatus("ready");
+        }
+      } catch {
+        if (!ignore) {
+          setKeywordTrends(fallbackKeywordTrends.map(normalizeKeywordTrend));
+          setTrendStatus("fallback");
+        }
+      }
+    }
+
+    loadKeywordTrends();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   const recommendation = home.todayRecommendation;
   const isLoading = status === "loading";
+  const isTrendLoading = trendStatus === "loading";
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-8 lg:py-10">
@@ -240,6 +287,66 @@ export default function HomePage() {
             )
           )}
         </div>
+      </section>
+
+      <section className="mt-8 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#4CAF50]">키워드 트렌드</p>
+            <h2 className="mt-2 text-2xl font-bold text-[#1E2A38]">요즘 함께 읽히는 주제</h2>
+          </div>
+          <Link className="text-sm font-semibold text-[#1E2A38] hover:underline" to="/categories">
+            분야별로 더 보기
+          </Link>
+        </div>
+
+        {isTrendLoading ? (
+          <p className="mt-5 rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">
+            키워드 트렌드를 불러오는 중입니다.
+          </p>
+        ) : null}
+
+        {trendStatus === "fallback" ? (
+          <p className="mt-5 rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280]">
+            API 응답을 받지 못해 임시 키워드 트렌드를 표시합니다.
+          </p>
+        ) : null}
+
+        {!isTrendLoading && keywordTrends.length === 0 ? (
+          <p className="mt-5 rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">
+            아직 키워드 트렌드 데이터가 없습니다.
+          </p>
+        ) : null}
+
+        {!isTrendLoading && keywordTrends.length > 0 ? (
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {keywordTrends.map((trend) => (
+              <article className="rounded-lg border border-[#E5E7EB] p-4" key={trend.keyword}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-[#6B7280]">#{trend.keyword}</p>
+                    <h3 className="mt-1 text-lg font-bold text-[#1E2A38]">{trend.bookCount}권이 연결된 주제</h3>
+                  </div>
+                  <span className="rounded-full bg-[#F59E0B]/10 px-2 py-1 text-xs font-bold text-[#F59E0B]">
+                    {trend.trendScore}
+                  </span>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {trend.books.slice(0, 2).map((book) => (
+                    <Link
+                      className="block rounded-md border border-[#E5E7EB] p-3 transition hover:border-[#1E2A38]"
+                      key={book.id}
+                      to={`/books/${book.id}`}
+                    >
+                      <p className="line-clamp-1 text-sm font-bold text-[#1E2A38]">{book.title}</p>
+                      <p className="mt-1 text-xs text-[#6B7280]">{book.author}</p>
+                    </Link>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );

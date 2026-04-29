@@ -83,3 +83,24 @@ export const categoryRankings = categories
     category,
     books: books.filter((book) => book.category === category),
   }));
+
+export const keywordTrends = [
+  {
+    keyword: "투자",
+    bookCount: 1,
+    trendScore: "+24%",
+    books: [books[1]],
+  },
+  {
+    keyword: "집중",
+    bookCount: 2,
+    trendScore: "+31%",
+    books: [books[2], books[0]],
+  },
+  {
+    keyword: "문장",
+    bookCount: 1,
+    trendScore: "+11%",
+    books: [books[4]],
+  },
+];

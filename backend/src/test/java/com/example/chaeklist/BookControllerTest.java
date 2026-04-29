@@ -116,6 +116,96 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void returnsKeywordTrendsWithRepresentativeBooks() throws Exception {
+		insertCategory(601, "경제");
+		insertKeyword(611, "투자");
+		insertKeyword(612, "AI");
+		insertBook(621, "투자 대표 책", true);
+		insertBook(622, "AI 대표 책", true);
+		insertBook(623, "제외될 수험서", false);
+		insertBookCategory(621, 601);
+		insertBookCategory(622, 601);
+		insertBookCategory(623, 601);
+		insertBookKeyword(621, 611);
+		insertBookKeyword(622, 612);
+		insertBookKeyword(623, 611);
+		insertRankingSnapshot(631, 621, null, 2);
+		insertRankingSnapshot(632, 622, null, 1);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "2")
+						.param("booksPerKeyword", "1"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].keyword", is("AI")))
+				.andExpect(jsonPath("$[0].bookCount", is(1)))
+				.andExpect(jsonPath("$[0].trendScore", is("+15%")))
+				.andExpect(jsonPath("$[0].books", hasSize(1)))
+				.andExpect(jsonPath("$[0].books[0].id", is("622")))
+				.andExpect(jsonPath("$[1].keyword", is("투자")))
+				.andExpect(jsonPath("$[1].bookCount", is(1)))
+				.andExpect(jsonPath("$[1].books[?(@.id == '623')]", hasSize(0)));
+	}
+
+	@Test
+	@Transactional
+	void excludesNonTrendKeywordsFromKeywordTrends() throws Exception {
+		insertCategory(641, "경제");
+		insertKeyword(651, "투자");
+		insertKeywordWithType(652, "기출", "EXCLUDE");
+		insertBook(661, "투자 트렌드 책", true);
+		insertBook(662, "기출 키워드가 붙은 교양 책", true);
+		insertBookCategory(661, 641);
+		insertBookCategory(662, 641);
+		insertBookKeyword(661, 651);
+		insertBookKeyword(662, 652);
+		insertRankingSnapshot(671, 661, null, 1);
+		insertRankingSnapshot(672, 662, null, 2);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "5")
+						.param("booksPerKeyword", "2"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.keyword == '투자')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.keyword == '기출')]", hasSize(0)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '662')]", hasSize(0)));
+	}
+
+	@Test
+	@Transactional
+	void usesOnlyTrendKeywordWhenSameKeywordNameHasDifferentTypes() throws Exception {
+		insertCategory(681, "경제");
+		insertKeywordWithType(691, "투자", "TREND");
+		insertKeywordWithType(692, "투자", "GENERAL");
+		insertBook(701, "트렌드 투자 책", true);
+		insertBook(702, "일반 투자 키워드 책", true);
+		insertBookCategory(701, 681);
+		insertBookCategory(702, 681);
+		insertBookKeyword(701, 691);
+		insertBookKeyword(702, 692);
+		insertRankingSnapshot(711, 701, null, 1);
+		insertRankingSnapshot(712, 702, null, 2);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "5")
+						.param("booksPerKeyword", "5"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.keyword == '투자')]", hasSize(1)))
+				.andExpect(jsonPath("$[0].keyword", is("투자")))
+				.andExpect(jsonPath("$[0].bookCount", is(1)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '701')]", hasSize(1)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '702')]", hasSize(0)));
+	}
+
+	@Test
+	void returnsEmptyKeywordTrends() throws Exception {
+		mockMvc.perform(get("/api/books/trends/keywords"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
 	void returnsCategories() throws Exception {
 		mockMvc.perform(get("/api/books/categories"))
 				.andExpect(status().isOk())
@@ -585,10 +675,14 @@ class BookControllerTest {
 	}
 
 	private void insertKeyword(long id, String name) {
+		insertKeywordWithType(id, name, "TREND");
+	}
+
+	private void insertKeywordWithType(long id, String name, String keywordType) {
 		jdbcTemplate.update("""
 				INSERT INTO keywords (id, name, keyword_type, created_at)
-				VALUES (?, ?, 'GENERAL', CURRENT_TIMESTAMP)
-				""", id, name);
+				VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+				""", id, name, keywordType);
 	}
 
 	private void insertBook(long id, String title, boolean generalEligible) {

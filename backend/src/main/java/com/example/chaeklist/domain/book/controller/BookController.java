@@ -8,6 +8,7 @@ import com.example.chaeklist.domain.book.dto.BookDetailResponse;
 import com.example.chaeklist.domain.book.dto.BookImageEnrichmentResponse;
 import com.example.chaeklist.domain.book.dto.BookSummaryResponse;
 import com.example.chaeklist.domain.book.dto.HomeResponse;
+import com.example.chaeklist.domain.book.dto.KeywordTrendResponse;
 import com.example.chaeklist.domain.book.service.BookImageEnrichmentService;
 import com.example.chaeklist.domain.book.service.BookService;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
@@ -92,6 +93,16 @@ public class BookController {
 			@Parameter(description = "반환 개수. 최대 50", example = "10") @RequestParam(defaultValue = "10") int limit
 	) {
 		return bookService.getTrending(limit);
+	}
+
+	@GetMapping("/api/books/trends/keywords")
+	@Operation(summary = "키워드 트렌드 조회", description = "교양 필터를 통과한 책의 키워드별 트렌드와 대표 도서를 반환합니다.")
+	@ApiResponse(responseCode = "200", description = "키워드 트렌드 조회 성공")
+	public List<KeywordTrendResponse> keywordTrends(
+			@Parameter(description = "반환할 키워드 개수. 최대 20", example = "3") @RequestParam(defaultValue = "3") int limit,
+			@Parameter(description = "키워드별 대표 도서 개수. 최대 10", example = "3") @RequestParam(defaultValue = "3") int booksPerKeyword
+	) {
+		return bookService.getKeywordTrends(limit, booksPerKeyword);
 	}
 
 	@GetMapping("/api/books/categories")
