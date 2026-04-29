@@ -676,22 +676,52 @@ public class MyPageService {
 		Set<String> purposeCategories = purposes.stream()
 				.flatMap(purpose -> purpose.categoryNames().stream())
 				.collect(java.util.stream.Collectors.toSet());
-		if (purposeCategories.isEmpty()) {
+		Set<String> purposeKeywords = purposes.stream()
+				.flatMap(purpose -> purpose.keywords().stream())
+				.collect(java.util.stream.Collectors.toSet());
+		if (purposeCategories.isEmpty() && purposeKeywords.isEmpty()) {
 			return 0;
+		}
+
+		List<String> matchConditions = new ArrayList<>();
+		List<Object> arguments = new ArrayList<>();
+		arguments.add(userId);
+
+		if (!purposeCategories.isEmpty()) {
+			matchConditions.add("""
+					EXISTS (
+						SELECT 1
+						FROM book_categories bc
+						JOIN categories c ON c.id = bc.category_id
+						WHERE bc.book_id = ubi.book_id
+							AND c.is_active = TRUE
+							AND c.name IN (%s)
+					)
+					""".formatted(placeholders(purposeCategories.size())));
+			arguments.addAll(purposeCategories);
+		}
+		if (!purposeKeywords.isEmpty()) {
+			matchConditions.add("""
+					EXISTS (
+						SELECT 1
+						FROM book_keywords bk
+						JOIN keywords k ON k.id = bk.keyword_id
+						WHERE bk.book_id = ubi.book_id
+							AND k.name IN (%s)
+					)
+					""".formatted(placeholders(purposeKeywords.size())));
+			arguments.addAll(purposeKeywords);
 		}
 
 		Integer count = jdbcTemplate.queryForObject("""
 				SELECT COUNT(DISTINCT ubi.book_id)
 				FROM user_book_interactions ubi
-				JOIN book_categories bc ON bc.book_id = ubi.book_id
-				JOIN categories c ON c.id = bc.category_id
 				WHERE ubi.user_id = ?
 					AND ubi.interaction_type = 'READ'
-					AND c.is_active = TRUE
-					AND c.name IN (%s)
-				""".formatted(placeholders(purposeCategories.size())),
+					AND (%s)
+				""".formatted(String.join(" OR ", matchConditions)),
 				Integer.class,
-				concatArguments(userId, purposeCategories.stream().toList()));
+				arguments.toArray());
 		return count == null ? 0 : count;
 	}
 
@@ -802,13 +832,6 @@ public class MyPageService {
 			return metrics.topCategory() + " 분야를 중심으로 독서 취향이 쌓이고 있습니다.";
 		}
 		return "읽은 책 기록을 바탕으로 독서 성장 흐름을 만들고 있습니다.";
-	}
-
-	private Object[] concatArguments(Object firstArgument, List<?> remainingArguments) {
-		List<Object> arguments = new ArrayList<>();
-		arguments.add(firstArgument);
-		arguments.addAll(remainingArguments);
-		return arguments.toArray();
 	}
 
 	private MyPageBookResponse mapBook(ResultSet resultSet, int rowNumber) throws SQLException {

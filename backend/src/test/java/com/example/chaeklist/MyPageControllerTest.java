@@ -115,6 +115,28 @@ class MyPageControllerTest {
 	}
 
 	@Test
+	void countsPurposeMatchedReadBooksByKeyword() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertCategory(804, "자기계발");
+		insertKeyword(805, "AI");
+		insertBook(905, "AI 습관 읽기", "오지민");
+		insertBook(906, "AI 루틴 노트", "배서준");
+		insertBookCategory(905, 804);
+		insertBookCategory(906, 804);
+		insertBookKeyword(905, 805);
+		insertBookKeyword(906, 805);
+		insertInteraction(userId, 905, "READ", "2026-04-24 10:00:00");
+		insertInteraction(userId, 906, "READ", "2026-04-24 11:00:00");
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readingGrowth.primaryBadge.code", is("PURPOSE_MATCH")))
+				.andExpect(jsonPath("$.readingGrowth.badges[?(@.code == 'PURPOSE_MATCH')]", hasSize(1)));
+	}
+
+	@Test
 	void rejectsMyPageWithoutBearerToken() throws Exception {
 		mockMvc.perform(get("/api/me/mypage"))
 				.andExpect(status().isUnauthorized())
@@ -481,6 +503,13 @@ class MyPageControllerTest {
 				""", id, name, "mypage-category-" + id, (int) id);
 	}
 
+	private void insertKeyword(long id, String name) {
+		jdbcTemplate.update("""
+				INSERT INTO keywords (id, name, keyword_type, created_at)
+				VALUES (?, ?, 'TREND', CURRENT_TIMESTAMP)
+				""", id, name);
+	}
+
 	private void insertBook(long id, String title, String author) {
 		jdbcTemplate.update("""
 				INSERT INTO books (
@@ -495,6 +524,13 @@ class MyPageControllerTest {
 				INSERT INTO book_categories (book_id, category_id)
 				VALUES (?, ?)
 				""", bookId, categoryId);
+	}
+
+	private void insertBookKeyword(long bookId, long keywordId) {
+		jdbcTemplate.update("""
+				INSERT INTO book_keywords (book_id, keyword_id)
+				VALUES (?, ?)
+				""", bookId, keywordId);
 	}
 
 	private void insertInterest(long userId, long categoryId) {
