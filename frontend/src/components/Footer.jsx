@@ -11,10 +11,10 @@ export default function Footer() {
         </div>
         <nav className="flex flex-wrap gap-4">
           <Link className="hover:text-[#1E2A38]" to="/">
-            서비스 소개
+            서비스 홈
           </Link>
           <Link className="hover:text-[#1E2A38]" to="/rankings">
-            랭킹 기준
+            랭킹
           </Link>
           <Link className="hover:text-[#1E2A38]" to="/categories">
             카테고리
