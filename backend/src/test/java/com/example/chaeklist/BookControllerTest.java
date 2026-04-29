@@ -149,6 +149,30 @@ class BookControllerTest {
 	}
 
 	@Test
+	@Transactional
+	void excludesNonTrendKeywordsFromKeywordTrends() throws Exception {
+		insertCategory(641, "경제");
+		insertKeyword(651, "투자");
+		insertKeywordWithType(652, "기출", "EXCLUDE");
+		insertBook(661, "투자 트렌드 책", true);
+		insertBook(662, "기출 키워드가 붙은 교양 책", true);
+		insertBookCategory(661, 641);
+		insertBookCategory(662, 641);
+		insertBookKeyword(661, 651);
+		insertBookKeyword(662, 652);
+		insertRankingSnapshot(671, 661, null, 1);
+		insertRankingSnapshot(672, 662, null, 2);
+
+		mockMvc.perform(get("/api/books/trends/keywords")
+						.param("limit", "5")
+						.param("booksPerKeyword", "2"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.keyword == '투자')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.keyword == '기출')]", hasSize(0)))
+				.andExpect(jsonPath("$[0].books[?(@.id == '662')]", hasSize(0)));
+	}
+
+	@Test
 	void returnsEmptyKeywordTrends() throws Exception {
 		mockMvc.perform(get("/api/books/trends/keywords"))
 				.andExpect(status().isOk())
@@ -625,10 +649,14 @@ class BookControllerTest {
 	}
 
 	private void insertKeyword(long id, String name) {
+		insertKeywordWithType(id, name, "TREND");
+	}
+
+	private void insertKeywordWithType(long id, String name, String keywordType) {
 		jdbcTemplate.update("""
 				INSERT INTO keywords (id, name, keyword_type, created_at)
-				VALUES (?, ?, 'GENERAL', CURRENT_TIMESTAMP)
-				""", id, name);
+				VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+				""", id, name, keywordType);
 	}
 
 	private void insertBook(long id, String title, boolean generalEligible) {

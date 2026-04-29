@@ -46,6 +46,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 				)
 			WHERE b.generalEligible = TRUE
 				AND keyword.name = :keyword
+				AND keyword.keywordType = 'TREND'
 			ORDER BY COALESCE(snapshot.recentGrowthRate, 0) DESC,
 				COALESCE(snapshot.rankingScore, 0) DESC,
 				b.id DESC

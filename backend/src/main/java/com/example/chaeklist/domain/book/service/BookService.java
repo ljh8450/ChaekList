@@ -132,6 +132,7 @@ public class BookService {
 							AND snapshot.ranking_period = ?
 					)
 				WHERE b.is_general_eligible = TRUE
+					AND k.keyword_type = 'TREND'
 				GROUP BY k.id, k.name
 				ORDER BY trend_score DESC, book_count DESC, k.name ASC
 				LIMIT ?
