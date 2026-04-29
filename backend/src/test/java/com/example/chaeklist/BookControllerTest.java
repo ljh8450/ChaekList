@@ -168,10 +168,44 @@ class BookControllerTest {
 				.andExpect(jsonPath("$.dismissed", is(false)))
 				.andExpect(jsonPath("$.keywords", hasSize(1)))
 				.andExpect(jsonPath("$.keywords[0]", is("투자")))
+				.andExpect(jsonPath("$.filterReport.status", is("INCLUDED")))
+				.andExpect(jsonPath("$.filterReport.reason", is("교양 필터 통과")))
+				.andExpect(jsonPath("$.filterReport.category", is("경제")))
+				.andExpect(jsonPath("$.filterReport.keywords[0]", is("투자")))
+				.andExpect(jsonPath("$.recommendationEvidence", hasSize(3)))
+				.andExpect(jsonPath("$.recommendationEvidence[0].type", is("CATEGORY")))
+				.andExpect(jsonPath("$.recommendationEvidence[0].label", is("대표 분야")))
+				.andExpect(jsonPath("$.recommendationEvidence[0].description",
+						is("경제 분야의 교양 도서를 찾을 때 비교할 수 있는 후보입니다.")))
+				.andExpect(jsonPath("$.recommendationEvidence[1].type", is("KEYWORD")))
+				.andExpect(jsonPath("$.recommendationEvidence[2].type", is("FILTER")))
+				.andExpect(jsonPath("$.readingGuide.fit",
+						is("경제 분야에서 투자 키워드를 기준으로 다음 읽을 책을 고르는 사용자에게 맞습니다.")))
+				.andExpect(jsonPath("$.readingGuide.similarityNote",
+						is("비슷한 책과 일부 키워드를 공유해 함께 비교해 볼 수 있습니다.")))
 				.andExpect(jsonPath("$.similarBooks", hasSize(3)))
 				.andExpect(jsonPath("$.similarBooks[0].id", is("302")))
 				.andExpect(jsonPath("$.similarBooks[?(@.id == '301')]", hasSize(0)))
 				.andExpect(jsonPath("$.similarBooks[?(@.id == '306')]", hasSize(0)));
+	}
+
+	@Test
+	@Transactional
+	void returnsBookDetailWithEmptyOptionalGuideData() throws Exception {
+		insertBook(312, "분류 없는 책", true);
+
+		mockMvc.perform(get("/api/books/{bookId}", "312"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is("312")))
+				.andExpect(jsonPath("$.category", is("미분류")))
+				.andExpect(jsonPath("$.filterReport.status", is("INCLUDED")))
+				.andExpect(jsonPath("$.filterReport.reason", is("교양 필터 통과")))
+				.andExpect(jsonPath("$.filterReport.category", nullValue()))
+				.andExpect(jsonPath("$.filterReport.keywords", hasSize(0)))
+				.andExpect(jsonPath("$.recommendationEvidence", hasSize(1)))
+				.andExpect(jsonPath("$.recommendationEvidence[0].type", is("FILTER")))
+				.andExpect(jsonPath("$.readingGuide", nullValue()))
+				.andExpect(jsonPath("$.similarBooks", hasSize(0)));
 	}
 
 	@Test

@@ -124,6 +124,18 @@ public class Book {
 		return generalEligible ? "교양 필터 통과" : filterStatus;
 	}
 
+	public boolean generalEligible() {
+		return generalEligible;
+	}
+
+	public String filterStatus() {
+		return filterStatus;
+	}
+
+	public String filterReason() {
+		return filterReason;
+	}
+
 	public String summary() {
 		return description == null ? "" : description;
 	}
