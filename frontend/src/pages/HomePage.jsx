@@ -306,6 +306,12 @@ export default function HomePage() {
           </p>
         ) : null}
 
+        {trendStatus === "fallback" ? (
+          <p className="mt-5 rounded-lg border border-[#E5E7EB] bg-[#F5F3EF] p-4 text-sm text-[#6B7280]">
+            API 응답을 받지 못해 임시 키워드 트렌드를 표시합니다.
+          </p>
+        ) : null}
+
         {!isTrendLoading && keywordTrends.length === 0 ? (
           <p className="mt-5 rounded-lg border border-[#E5E7EB] p-4 text-sm text-[#6B7280]">
             아직 키워드 트렌드 데이터가 없습니다.
