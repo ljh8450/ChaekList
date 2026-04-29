@@ -48,12 +48,115 @@ function EmptyState({ message, actionLabel, to }) {
   );
 }
 
-function toMyPageBook(book) {
-  return {
-    ...book,
-    reason: book.reason ?? book.recommendationReason,
-    recommendationReason: book.recommendationReason ?? book.reason,
+function clampPercent(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, numericValue));
+}
+
+function ReadingGrowthCard({ growth, isLoading }) {
+  if (isLoading) {
+    return null;
+  }
+
+  if (!growth) {
+    return (
+      <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <p className="text-sm font-semibold text-[#1E2A38]">독서 성장</p>
+        <div className="mt-5">
+          <EmptyState
+            actionLabel="읽은 책 추가"
+            message="읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다."
+            to="/onboarding?section=read-books"
+          />
+        </div>
+      </section>
+    );
+  }
+
+  const progressPercent = clampPercent(growth.progressPercent);
+  const primaryBadge = growth.primaryBadge ?? {
+    code: "RECORD_START",
+    label: "기록 시작",
+    description: "읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다.",
   };
+  const badges = growth.badges ?? [];
+  const metrics = [
+    ["이번 달", `${growth.monthlyReadCount ?? 0}권`],
+    ["저장 후 읽음", `${growth.savedToReadCount ?? 0}권`],
+    ["새로 넓힌 분야", `${growth.categoryDiversityCount ?? 0}개`],
+    ["추천에서 이어진 책", `${growth.recommendationConversionCount ?? 0}권`],
+  ];
+
+  return (
+    <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#1E2A38]">독서 성장</p>
+          <h2 className="mt-2 break-keep text-2xl font-bold text-[#1E2A38]">{primaryBadge.label}</h2>
+          <p className="mt-3 max-w-2xl break-keep text-sm leading-6 text-[#6B7280]">
+            {growth.summary ?? primaryBadge.description}
+          </p>
+        </div>
+        <span className="inline-flex w-fit rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
+          {primaryBadge.description}
+        </span>
+      </div>
+
+      {badges.length > 0 ? (
+        <div className="mt-5">
+          <p className="text-xs font-semibold text-[#6B7280]">배지</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {badges.slice(0, 4).map((badge) => (
+              <span
+                className="rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-xs font-semibold text-[#1E2A38]"
+                key={badge.code}
+                title={badge.description}
+              >
+                {badge.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <Link
+            className="inline-flex justify-center rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#27384a]"
+            to="/onboarding?section=read-books"
+          >
+            읽은 책 추가
+          </Link>
+          <Link
+            className="inline-flex justify-center rounded-md border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#1E2A38] transition hover:border-[#1E2A38]"
+            to="/rankings"
+          >
+          읽을 책 찾기
+        </Link>
+      </div>
+      )}
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold text-[#6B7280]">다음 배지까지</p>
+          <p className="text-xs font-bold text-[#1E2A38]">{progressPercent}%</p>
+        </div>
+        <div className="mt-2 h-2 rounded-full bg-[#F5F3EF]">
+          <div className="h-2 rounded-full bg-[#4CAF50]" style={{ width: `${progressPercent}%` }} />
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {metrics.map(([label, value]) => (
+          <div className="min-h-20 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-3" key={label}>
+            <p className="break-keep text-xs font-semibold leading-5 text-[#6B7280]">{label}</p>
+            <p className="mt-2 text-xl font-bold text-[#1E2A38]">{value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export default function MyPage() {
@@ -117,6 +220,26 @@ export default function MyPage() {
   const readBooks = myPage?.readBooks ?? [];
   const savedBooks = myPage?.savedBooks ?? [];
   const recommendationHistory = myPage?.recommendationHistory ?? [];
+  const readingGrowth = myPage?.readingGrowth;
+
+  async function reloadMyPage() {
+    const response = await fetch("/api/me/mypage", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (response.status === 401) {
+      logout();
+      throw new Error("로그인이 만료되었습니다. 다시 로그인해 주세요.");
+    }
+
+    if (!response.ok) {
+      throw new Error("마이페이지 정보를 다시 불러오지 못했습니다.");
+    }
+
+    setMyPage(await response.json());
+  }
 
   async function addBookInteraction(book, type) {
     const response = await fetch(`/api/me/books/${book.id}/interactions`, {
@@ -137,26 +260,7 @@ export default function MyPage() {
       throw new Error("책 상태를 저장하지 못했습니다.");
     }
 
-    const normalizedBook = toMyPageBook(book);
-    setMyPage((current) => {
-      if (!current) {
-        return current;
-      }
-
-      if (type === "READ") {
-        const hasReadBook = (current.readBooks ?? []).some((item) => String(item.id) === String(book.id));
-        return {
-          ...current,
-          readBooks: hasReadBook ? current.readBooks : [normalizedBook, ...(current.readBooks ?? [])],
-        };
-      }
-
-      const hasSavedBook = (current.savedBooks ?? []).some((item) => String(item.id) === String(book.id));
-      return {
-        ...current,
-        savedBooks: hasSavedBook ? current.savedBooks : [normalizedBook, ...(current.savedBooks ?? [])],
-      };
-    });
+    await reloadMyPage();
   }
 
   return (
@@ -207,6 +311,8 @@ export default function MyPage() {
               {errorMessage}
             </div>
           ) : null}
+
+          <ReadingGrowthCard growth={readingGrowth} isLoading={isLoading} />
 
           <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
