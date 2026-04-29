@@ -18,6 +18,8 @@ public record MyPageResponse(
 		@Schema(description = "저장한 책")
 		List<MyPageBookResponse> savedBooks,
 		@Schema(description = "추천 히스토리")
-		List<MyPageRecommendationResponse> recommendationHistory
+		List<MyPageRecommendationResponse> recommendationHistory,
+		@Schema(description = "독서 성장")
+		ReadingGrowthResponse readingGrowth
 ) {
 }

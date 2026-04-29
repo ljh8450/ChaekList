@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
@@ -109,6 +109,7 @@ function AppRoutes() {
 export default function App() {
   const [authSession, setAuthSession] = useState(() => loadStoredAuth());
   const [isAuthReady, setIsAuthReady] = useState(() => !loadStoredAuth()?.accessToken);
+  const [primaryBadge, setPrimaryBadge] = useState(null);
 
   useEffect(() => {
     const storedAuth = loadStoredAuth();
@@ -161,22 +162,66 @@ export default function App() {
     };
   }, []);
 
+  const refreshPrimaryBadge = useCallback(async () => {
+    const accessToken = authSession?.accessToken ?? "";
+    if (!accessToken) {
+      setPrimaryBadge(null);
+      return null;
+    }
+
+    try {
+      const response = await fetch("/api/me/reading-growth/primary-badge", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setAuthSession(null);
+          clearAuthSession();
+        }
+        setPrimaryBadge(null);
+        return null;
+      }
+
+      const badge = await response.json();
+      setPrimaryBadge(badge);
+      return badge;
+    } catch {
+      setPrimaryBadge(null);
+      return null;
+    }
+  }, [authSession?.accessToken]);
+
+  const login = useCallback((session) => {
+    setAuthSession(session);
+    storeAuthSession(session);
+  }, []);
+
+  const logout = useCallback(() => {
+    setAuthSession(null);
+    setPrimaryBadge(null);
+    clearAuthSession();
+  }, []);
+
+  useEffect(() => {
+    refreshPrimaryBadge();
+  }, [refreshPrimaryBadge]);
+
   const authValue = useMemo(
     () => ({
       accessToken: authSession?.accessToken ?? "",
       currentUser: authSession?.user ?? null,
       demoUser,
       isAuthReady,
-      login(session) {
-        setAuthSession(session);
-        storeAuthSession(session);
-      },
-      logout() {
-        setAuthSession(null);
-        clearAuthSession();
-      },
+      primaryBadge,
+      login,
+      logout,
+      refreshPrimaryBadge,
+      setPrimaryBadge,
     }),
-    [authSession, isAuthReady],
+    [authSession, isAuthReady, login, logout, primaryBadge, refreshPrimaryBadge],
   );
 
   return (

@@ -75,7 +75,7 @@ async function resolvePostAuthPath(accessToken, nextPath) {
     return nextPath;
   }
 
-  return nextPath === "/" ? "/mypage" : nextPath;
+  return nextPath;
 }
 
 export default function AuthForm({ mode }) {

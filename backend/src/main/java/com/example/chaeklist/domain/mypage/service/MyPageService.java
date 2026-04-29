@@ -2,9 +2,12 @@ package com.example.chaeklist.domain.mypage.service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import com.example.chaeklist.domain.auth.dto.AuthUserResponse;
@@ -19,6 +22,8 @@ import com.example.chaeklist.domain.mypage.dto.OnboardingCategoryOptionResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
 import com.example.chaeklist.domain.mypage.dto.OnboardingStatusResponse;
+import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse;
+import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
 import com.example.chaeklist.domain.mypage.dto.ReadingPurposeResponse;
 import com.example.chaeklist.domain.mypage.model.ReadingPurpose;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
@@ -45,8 +50,13 @@ public class MyPageService {
 				getReadingPurposes(user.id()),
 				getBooksByInteraction(user.id(), "READ", DEFAULT_LIMIT),
 				getSavedBooks(user.id(), DEFAULT_LIMIT),
-				getRecommendationHistory(user.id(), DEFAULT_LIMIT)
+				getRecommendationHistory(user.id(), DEFAULT_LIMIT),
+				getReadingGrowth(user.id())
 		);
+	}
+
+	public Badge getPrimaryReadingGrowthBadge(AuthenticatedUser user) {
+		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(user.id())));
 	}
 
 	public OnboardingStatusResponse getOnboardingStatus(AuthenticatedUser user) {
@@ -514,6 +524,338 @@ public class MyPageService {
 		);
 	}
 
+	private ReadingGrowthResponse getReadingGrowth(long userId) {
+		ReadingGrowthMetrics metrics = getReadingGrowthMetrics(userId);
+		int score = metrics.totalReadCount() * 10
+				+ metrics.savedToReadCount() * 12
+				+ metrics.categoryDiversityCount() * 15
+				+ metrics.purposeMatchReadCount() * 10
+				+ metrics.recommendationSavedCount() * 5
+				+ metrics.recommendationReadCount() * 15;
+
+		List<Badge> badges = getReadingGrowthBadges(metrics);
+		Badge primaryBadge = selectPrimaryBadge(badges);
+
+		return new ReadingGrowthResponse(
+				toReadingGrowthLevel(score),
+				toReadingGrowthProgress(score),
+				toReadingGrowthSummary(metrics),
+				metrics.monthlyReadCount(),
+				metrics.savedToReadCount(),
+				metrics.categoryDiversityCount(),
+				metrics.recommendationConversionCount(),
+				primaryBadge,
+				badges
+		);
+	}
+
+	private ReadingGrowthMetrics getReadingGrowthMetrics(long userId) {
+		LocalDate today = LocalDate.now();
+		LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
+		LocalDateTime nextMonthStart = today.plusMonths(1).withDayOfMonth(1).atStartOfDay();
+		int monthlyReadCount = countMonthlyReadBooks(userId, monthStart, nextMonthStart);
+		int totalReadCount = countTotalReadBooks(userId);
+		int savedToReadCount = countSavedToReadBooks(userId);
+		int categoryDiversityCount = countReadCategoryDiversity(userId);
+		int recommendationSavedCount = countRecommendationConversions(userId, "SAVE");
+		int recommendationReadCount = countRecommendationConversions(userId, "READ");
+		int recommendationConversionCount = countRecommendationConversions(userId);
+		int purposeMatchReadCount = countPurposeMatchReadBooks(userId);
+		String topCategory = getTopReadCategory(userId).orElse(null);
+
+		return new ReadingGrowthMetrics(
+				monthlyReadCount,
+				totalReadCount,
+				savedToReadCount,
+				categoryDiversityCount,
+				recommendationSavedCount,
+				recommendationReadCount,
+				recommendationConversionCount,
+				purposeMatchReadCount,
+				topCategory
+		);
+	}
+
+	private ReadingGrowthMetrics getReadingGrowthBadgeMetrics(long userId) {
+		return new ReadingGrowthMetrics(
+				0,
+				countTotalReadBooks(userId),
+				countSavedToReadBooks(userId),
+				countReadCategoryDiversity(userId),
+				0,
+				0,
+				countRecommendationConversions(userId),
+				countPurposeMatchReadBooks(userId),
+				null
+		);
+	}
+
+	private int countMonthlyReadBooks(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT book_id)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND interaction_type = 'READ'
+					AND created_at >= ?
+					AND created_at < ?
+				""", Integer.class, userId, monthStart, nextMonthStart);
+		return count == null ? 0 : count;
+	}
+
+	private int countTotalReadBooks(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT book_id)
+				FROM user_book_interactions
+				WHERE user_id = ?
+					AND interaction_type = 'READ'
+				""", Integer.class, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countSavedToReadBooks(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT read_interactions.book_id)
+				FROM user_book_interactions read_interactions
+				JOIN user_book_interactions save_interactions
+					ON save_interactions.user_id = read_interactions.user_id
+					AND save_interactions.book_id = read_interactions.book_id
+					AND save_interactions.interaction_type = 'SAVE'
+					AND (
+						save_interactions.created_at < read_interactions.created_at
+						OR (
+							save_interactions.created_at = read_interactions.created_at
+							AND save_interactions.id < read_interactions.id
+						)
+					)
+				WHERE read_interactions.user_id = ?
+					AND read_interactions.interaction_type = 'READ'
+				""", Integer.class, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countReadCategoryDiversity(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT c.name)
+				FROM user_book_interactions ubi
+				JOIN book_categories bc ON bc.book_id = ubi.book_id
+				JOIN categories c ON c.id = bc.category_id
+				WHERE ubi.user_id = ?
+					AND ubi.interaction_type = 'READ'
+					AND c.is_active = TRUE
+				""", Integer.class, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countRecommendationConversions(long userId, String interactionType) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT r.book_id)
+				FROM recommendations r
+				JOIN user_book_interactions ubi
+					ON ubi.user_id = r.user_id
+					AND ubi.book_id = r.book_id
+					AND ubi.interaction_type = ?
+					AND ubi.created_at >= r.created_at
+				WHERE r.user_id = ?
+				""", Integer.class, interactionType, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countRecommendationConversions(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT r.book_id)
+				FROM recommendations r
+				JOIN user_book_interactions ubi
+					ON ubi.user_id = r.user_id
+					AND ubi.book_id = r.book_id
+					AND ubi.interaction_type IN ('SAVE', 'READ')
+					AND ubi.created_at >= r.created_at
+				WHERE r.user_id = ?
+				""", Integer.class, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countPurposeMatchReadBooks(long userId) {
+		List<ReadingPurpose> purposes = getReadingPurposeModels(userId);
+		if (purposes.isEmpty()) {
+			return 0;
+		}
+
+		Set<String> purposeCategories = purposes.stream()
+				.flatMap(purpose -> purpose.categoryNames().stream())
+				.collect(java.util.stream.Collectors.toSet());
+		Set<String> purposeKeywords = purposes.stream()
+				.flatMap(purpose -> purpose.keywords().stream())
+				.collect(java.util.stream.Collectors.toSet());
+		if (purposeCategories.isEmpty() && purposeKeywords.isEmpty()) {
+			return 0;
+		}
+
+		List<String> matchConditions = new ArrayList<>();
+		List<Object> arguments = new ArrayList<>();
+		arguments.add(userId);
+
+		if (!purposeCategories.isEmpty()) {
+			matchConditions.add("""
+					EXISTS (
+						SELECT 1
+						FROM book_categories bc
+						JOIN categories c ON c.id = bc.category_id
+						WHERE bc.book_id = ubi.book_id
+							AND c.is_active = TRUE
+							AND c.name IN (%s)
+					)
+					""".formatted(placeholders(purposeCategories.size())));
+			arguments.addAll(purposeCategories);
+		}
+		if (!purposeKeywords.isEmpty()) {
+			matchConditions.add("""
+					EXISTS (
+						SELECT 1
+						FROM book_keywords bk
+						JOIN keywords k ON k.id = bk.keyword_id
+						WHERE bk.book_id = ubi.book_id
+							AND k.name IN (%s)
+					)
+					""".formatted(placeholders(purposeKeywords.size())));
+			arguments.addAll(purposeKeywords);
+		}
+
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT ubi.book_id)
+				FROM user_book_interactions ubi
+				WHERE ubi.user_id = ?
+					AND ubi.interaction_type = 'READ'
+					AND (%s)
+				""".formatted(String.join(" OR ", matchConditions)),
+				Integer.class,
+				arguments.toArray());
+		return count == null ? 0 : count;
+	}
+
+	private Optional<String> getTopReadCategory(long userId) {
+		List<String> categories = jdbcTemplate.queryForList("""
+				SELECT c.name
+				FROM user_book_interactions ubi
+				JOIN book_categories bc ON bc.book_id = ubi.book_id
+				JOIN categories c ON c.id = bc.category_id
+				WHERE ubi.user_id = ?
+					AND ubi.interaction_type = 'READ'
+					AND c.is_active = TRUE
+				GROUP BY c.name, c.display_order
+				ORDER BY COUNT(DISTINCT ubi.book_id) DESC, c.display_order ASC, c.name ASC
+				LIMIT 1
+				""", String.class, userId);
+		return categories.stream().findFirst();
+	}
+
+	private List<ReadingPurpose> getReadingPurposeModels(long userId) {
+		return jdbcTemplate.queryForList("""
+				SELECT purpose_code
+				FROM user_reading_purposes
+				WHERE user_id = ?
+				ORDER BY created_at ASC, purpose_code ASC
+				""", String.class, userId).stream()
+				.map(ReadingPurpose::fromCode)
+				.flatMap(Optional::stream)
+				.toList();
+	}
+
+	private List<Badge> getReadingGrowthBadges(ReadingGrowthMetrics metrics) {
+		List<Badge> badges = new ArrayList<>();
+		if (metrics.totalReadCount() >= 1) {
+			badges.add(new Badge("FIRST_READ", "첫 독서 기록", "읽은 책을 1권 이상 기록했습니다."));
+		}
+		if (metrics.categoryDiversityCount() >= 3) {
+			badges.add(new Badge("CATEGORY_EXPLORER", "분야 탐험가", "서로 다른 분야의 책을 3개 이상 읽었습니다."));
+		}
+		if (metrics.savedToReadCount() >= 1) {
+			badges.add(new Badge("SAVED_TO_READ", "저장 후 읽음 실천가", "저장한 책을 읽은 책으로 이어갔습니다."));
+		}
+		if (metrics.recommendationConversionCount() >= 1) {
+			badges.add(new Badge("RECOMMENDATION_FOLLOWER", "추천에서 이어진 책", "추천받은 책을 저장하거나 읽었습니다."));
+		}
+		if (metrics.purposeMatchReadCount() >= 3) {
+			badges.add(new Badge("PURPOSE_MATCH", "목적 맞춤 독서", "선택한 독서 목적과 맞는 책을 3권 이상 읽었습니다."));
+		}
+		return badges;
+	}
+
+	private Optional<Badge> findBadge(List<Badge> badges, String code) {
+		return badges.stream()
+				.filter(badge -> code.equals(badge.code()))
+				.findFirst();
+	}
+
+	private Badge selectPrimaryBadge(List<Badge> badges) {
+		return badges.stream()
+				.filter(badge -> "PURPOSE_MATCH".equals(badge.code()))
+				.findFirst()
+				.or(() -> findBadge(badges, "CATEGORY_EXPLORER"))
+				.or(() -> findBadge(badges, "SAVED_TO_READ"))
+				.or(() -> findBadge(badges, "RECOMMENDATION_FOLLOWER"))
+				.or(() -> findBadge(badges, "FIRST_READ"))
+				.orElse(new Badge(
+						"RECORD_START",
+						"기록 시작",
+						"읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다."
+				));
+	}
+
+	private int toReadingGrowthLevel(int score) {
+		if (score >= 150) {
+			return 5;
+		}
+		if (score >= 100) {
+			return 4;
+		}
+		if (score >= 60) {
+			return 3;
+		}
+		if (score >= 30) {
+			return 2;
+		}
+		return 1;
+	}
+
+	private int toReadingGrowthProgress(int score) {
+		if (score >= 150) {
+			return 100;
+		}
+
+		int lowerBound;
+		int upperBound;
+		if (score >= 100) {
+			lowerBound = 100;
+			upperBound = 150;
+		} else if (score >= 60) {
+			lowerBound = 60;
+			upperBound = 100;
+		} else if (score >= 30) {
+			lowerBound = 30;
+			upperBound = 60;
+		} else {
+			lowerBound = 0;
+			upperBound = 30;
+		}
+		return Math.min(100, Math.max(0, (score - lowerBound) * 100 / (upperBound - lowerBound)));
+	}
+
+	private String toReadingGrowthSummary(ReadingGrowthMetrics metrics) {
+		if (metrics.totalReadCount() == 0) {
+			return "읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다.";
+		}
+		if (metrics.purposeMatchReadCount() >= 3) {
+			return "선택한 독서 목적과 맞는 책을 꾸준히 읽고 있습니다.";
+		}
+		if (metrics.topCategory() != null && metrics.categoryDiversityCount() >= 2) {
+			return metrics.topCategory() + " 분야를 중심으로 여러 분야로 독서 폭을 넓히고 있습니다.";
+		}
+		if (metrics.topCategory() != null) {
+			return metrics.topCategory() + " 분야를 중심으로 독서 취향이 쌓이고 있습니다.";
+		}
+		return "읽은 책 기록을 바탕으로 독서 성장 흐름을 만들고 있습니다.";
+	}
+
 	private MyPageBookResponse mapBook(ResultSet resultSet, int rowNumber) throws SQLException {
 		String category = resultSet.getString("category_name");
 		return new MyPageBookResponse(
@@ -554,6 +896,19 @@ public class MyPageService {
 	private LocalDateTime readLocalDateTime(ResultSet resultSet, String columnName) throws SQLException {
 		java.sql.Timestamp timestamp = resultSet.getTimestamp(columnName);
 		return timestamp == null ? null : timestamp.toLocalDateTime();
+	}
+
+	private record ReadingGrowthMetrics(
+			int monthlyReadCount,
+			int totalReadCount,
+			int savedToReadCount,
+			int categoryDiversityCount,
+			int recommendationSavedCount,
+			int recommendationReadCount,
+			int recommendationConversionCount,
+			int purposeMatchReadCount,
+			String topCategory
+	) {
 	}
 
 	public static class OnboardingRequestException extends RuntimeException {

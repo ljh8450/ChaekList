@@ -9,6 +9,7 @@ import com.example.chaeklist.domain.mypage.dto.MyPageResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingOptionsResponse;
 import com.example.chaeklist.domain.mypage.dto.OnboardingRequest;
 import com.example.chaeklist.domain.mypage.dto.OnboardingStatusResponse;
+import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
 import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import com.example.chaeklist.global.auth.BearerTokenResolver;
@@ -52,6 +53,18 @@ public class MyPageController {
 	) {
 		AuthenticatedUser user = authenticate(authorizationHeader);
 		return myPageService.getMyPage(user);
+	}
+
+	@GetMapping("/api/me/reading-growth/primary-badge")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "대표 독서 성장 배지 조회", description = "헤더 표시용 대표 독서 성장 배지만 가볍게 조회합니다.")
+	@ApiResponse(responseCode = "200", description = "대표 배지 조회 성공")
+	@ApiResponse(responseCode = "401", description = "Bearer token 누락, 만료 또는 검증 실패")
+	public Badge primaryReadingGrowthBadge(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+	) {
+		AuthenticatedUser user = authenticate(authorizationHeader);
+		return myPageService.getPrimaryReadingGrowthBadge(user);
 	}
 
 	@GetMapping("/api/me/onboarding-status")
