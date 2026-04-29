@@ -100,9 +100,6 @@ function ReadingGrowthCard({ growth, isLoading }) {
             {growth.summary ?? primaryBadge.description}
           </p>
         </div>
-        <span className="inline-flex w-fit rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
-          {primaryBadge.description}
-        </span>
       </div>
 
       {badges.length > 0 ? (
@@ -269,6 +266,13 @@ export default function MyPage() {
         <aside className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold text-[#4CAF50]">마이페이지</p>
           <h1 className="mt-2 text-3xl font-bold leading-tight text-[#1E2A38]">{user.nickname}님의 독서 취향</h1>
+          {readingGrowth?.primaryBadge?.label ? (
+            <div className="mt-3">
+              <span className="inline-flex rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
+                {readingGrowth.primaryBadge.label}
+              </span>
+            </div>
+          ) : null}
           <p className="mt-4 text-sm leading-6 text-[#6B7280]">
             관심 분야, 읽은 책, 추천 히스토리를 바탕으로 지금 읽을 만한 교양서를 정리합니다.
           </p>
