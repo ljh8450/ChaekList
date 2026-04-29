@@ -6,9 +6,8 @@
 - 기준 문서:
   - `README.md`
   - `docs/plan/2026-04-29/follow-up-plan.md`
-  - `docs/plan/2026-04-29/priority-1-search-based-book-addition-plan.md`
-  - `docs/plan/2026-04-29/priority-2-reading-purpose-plan.md`
-  - `docs/plan/2026-04-29/priority-3-data-driven-recommendation-plan.md`
+  - `docs/plan/2026-04-29/priority-1-reading-growth-gamification-plan.md`
+  - `docs/plan/2026-04-29/priority-2-social-expansion-plan.md`
 - 목적: 1차 MVP 구현 계획과 현재 구현 사항을 비교해, 아직 빠진 기능과 구현 전 확장 여부를 확인해야 하는 부분을 명시한다.
 - 범위: planner 역할 문서화만 수행한다. frontend/backend 코드, API, DB schema 변경은 포함하지 않는다.
 
