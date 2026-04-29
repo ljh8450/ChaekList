@@ -22,7 +22,7 @@ export default function Header() {
       }
 
       try {
-        const response = await fetch("/api/me/mypage", {
+        const response = await fetch("/api/me/reading-growth/primary-badge", {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
@@ -37,9 +37,9 @@ export default function Header() {
           throw new Error("Failed to load primary badge.");
         }
 
-        const data = await response.json();
+        const badge = await response.json();
         if (!ignore) {
-          setPrimaryBadgeLabel(data.readingGrowth?.primaryBadge?.label ?? "");
+          setPrimaryBadgeLabel(badge.label ?? "");
         }
       } catch {
         if (!ignore) {

@@ -55,6 +55,10 @@ public class MyPageService {
 		);
 	}
 
+	public Badge getPrimaryReadingGrowthBadge(AuthenticatedUser user) {
+		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(user.id())));
+	}
+
 	public OnboardingStatusResponse getOnboardingStatus(AuthenticatedUser user) {
 		Boolean completed = jdbcTemplate.queryForObject(
 				"SELECT onboarding_completed FROM users WHERE id = ?",
@@ -530,18 +534,7 @@ public class MyPageService {
 				+ metrics.recommendationReadCount() * 15;
 
 		List<Badge> badges = getReadingGrowthBadges(metrics);
-		Badge primaryBadge = badges.stream()
-				.filter(badge -> "PURPOSE_MATCH".equals(badge.code()))
-				.findFirst()
-				.or(() -> findBadge(badges, "CATEGORY_EXPLORER"))
-				.or(() -> findBadge(badges, "SAVED_TO_READ"))
-				.or(() -> findBadge(badges, "RECOMMENDATION_FOLLOWER"))
-				.or(() -> findBadge(badges, "FIRST_READ"))
-				.orElse(new Badge(
-						"RECORD_START",
-						"기록 시작",
-						"읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다."
-				));
+		Badge primaryBadge = selectPrimaryBadge(badges);
 
 		return new ReadingGrowthResponse(
 				toReadingGrowthLevel(score),
@@ -580,6 +573,20 @@ public class MyPageService {
 				recommendationConversionCount,
 				purposeMatchReadCount,
 				topCategory
+		);
+	}
+
+	private ReadingGrowthMetrics getReadingGrowthBadgeMetrics(long userId) {
+		return new ReadingGrowthMetrics(
+				0,
+				countTotalReadBooks(userId),
+				countSavedToReadBooks(userId),
+				countReadCategoryDiversity(userId),
+				0,
+				0,
+				countRecommendationConversions(userId),
+				countPurposeMatchReadBooks(userId),
+				null
 		);
 	}
 
@@ -777,6 +784,21 @@ public class MyPageService {
 		return badges.stream()
 				.filter(badge -> code.equals(badge.code()))
 				.findFirst();
+	}
+
+	private Badge selectPrimaryBadge(List<Badge> badges) {
+		return badges.stream()
+				.filter(badge -> "PURPOSE_MATCH".equals(badge.code()))
+				.findFirst()
+				.or(() -> findBadge(badges, "CATEGORY_EXPLORER"))
+				.or(() -> findBadge(badges, "SAVED_TO_READ"))
+				.or(() -> findBadge(badges, "RECOMMENDATION_FOLLOWER"))
+				.or(() -> findBadge(badges, "FIRST_READ"))
+				.orElse(new Badge(
+						"RECORD_START",
+						"기록 시작",
+						"읽은 책을 추가하면 관심 분야와 독서 목적에 맞춰 성장 흐름을 보여드립니다."
+				));
 	}
 
 	private int toReadingGrowthLevel(int score) {

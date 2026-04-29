@@ -115,6 +115,25 @@ class MyPageControllerTest {
 	}
 
 	@Test
+	void returnsPrimaryReadingGrowthBadgeForHeader() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertCategory(803, "사회");
+		insertBook(904, "사회 읽기", "차민서");
+		insertBookCategory(904, 803);
+		insertInteraction(userId, 902, "READ", "2026-04-22 10:00:00");
+		insertInteraction(userId, 904, "READ", "2026-04-23 10:00:00");
+		insertRecommendation(userId, 902, "2026-04-20 09:00:00");
+
+		mockMvc.perform(get("/api/me/reading-growth/primary-badge")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.code", is("PURPOSE_MATCH")))
+				.andExpect(jsonPath("$.label", is("목적 맞춤 독서")))
+				.andExpect(jsonPath("$.description", is("선택한 독서 목적과 맞는 책을 3권 이상 읽었습니다.")));
+	}
+
+	@Test
 	void countsPurposeMatchedReadBooksByKeyword() throws Exception {
 		String accessToken = loginAndExtractAccessToken();
 		long userId = userId();
