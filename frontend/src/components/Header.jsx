@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../App";
 
@@ -9,51 +8,8 @@ const navItems = [
 ];
 
 export default function Header() {
-  const { accessToken, currentUser, logout } = useAuth();
-  const [primaryBadgeLabel, setPrimaryBadgeLabel] = useState("");
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadPrimaryBadge() {
-      if (!accessToken || !currentUser) {
-        setPrimaryBadgeLabel("");
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/me/reading-growth/primary-badge", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (response.status === 401) {
-          logout();
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error("Failed to load primary badge.");
-        }
-
-        const badge = await response.json();
-        if (!ignore) {
-          setPrimaryBadgeLabel(badge.label ?? "");
-        }
-      } catch {
-        if (!ignore) {
-          setPrimaryBadgeLabel("");
-        }
-      }
-    }
-
-    loadPrimaryBadge();
-
-    return () => {
-      ignore = true;
-    };
-  }, [accessToken, currentUser, logout]);
+  const { currentUser, logout, primaryBadge } = useAuth();
+  const primaryBadgeLabel = primaryBadge?.label ?? "";
 
   return (
     <header className="sticky top-0 z-10 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">

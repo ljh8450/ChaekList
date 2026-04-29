@@ -156,8 +156,69 @@ function ReadingGrowthCard({ growth, isLoading }) {
   );
 }
 
+function ProfileSummary({ user, readingGrowth, stats, isLoading }) {
+  if (isLoading) {
+    return (
+      <aside className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold text-[#4CAF50]">마이페이지</p>
+        <div className="mt-3 h-16 rounded-md bg-[#F5F3EF]" />
+        <div className="mt-4 h-12 rounded-md bg-[#F5F3EF]" />
+        <div className="mt-6 space-y-3 rounded-lg bg-[#F5F3EF] p-4">
+          <div className="h-9 rounded-md bg-white/70" />
+          <div className="h-9 rounded-md bg-white/70" />
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+          {["관심", "목적", "읽은 책", "추천"].map((label) => (
+            <div className="rounded-lg border border-[#E5E7EB] p-3 text-center" key={label}>
+              <div className="mx-auto h-6 w-10 rounded bg-[#F5F3EF]" />
+              <p className="mt-2 text-xs text-[#6B7280]">{label}</p>
+            </div>
+          ))}
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
+      <p className="text-sm font-semibold text-[#4CAF50]">마이페이지</p>
+      <h1 className="mt-2 text-3xl font-bold leading-tight text-[#1E2A38]">{user.nickname}님의 독서 취향</h1>
+      {readingGrowth?.primaryBadge?.label ? (
+        <div className="mt-3">
+          <span className="inline-flex rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
+            {readingGrowth.primaryBadge.label}
+          </span>
+        </div>
+      ) : null}
+      <p className="mt-4 text-sm leading-6 text-[#6B7280]">
+        관심 분야, 읽은 책, 추천 히스토리를 바탕으로 지금 읽을 만한 교양서를 정리합니다.
+      </p>
+
+      <div className="mt-6 space-y-3 rounded-lg bg-[#F5F3EF] p-4">
+        <div>
+          <p className="text-xs font-medium text-[#6B7280]">이메일</p>
+          <p className="mt-1 text-sm font-semibold text-[#1E2A38]">{user.email}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-[#6B7280]">계정 상태</p>
+          <p className="mt-1 text-sm font-semibold text-[#4CAF50]">{user.status}</p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+        {stats.map(([label, value]) => (
+          <div className="rounded-lg border border-[#E5E7EB] p-3 text-center" key={label}>
+            <p className="text-xl font-bold text-[#1E2A38]">{value}</p>
+            <p className="mt-1 text-xs text-[#6B7280]">{label}</p>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 export default function MyPage() {
-  const { accessToken, currentUser, logout } = useAuth();
+  const { accessToken, currentUser, logout, setPrimaryBadge } = useAuth();
   const [myPage, setMyPage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -188,6 +249,7 @@ export default function MyPage() {
         const data = await response.json();
         if (!ignore) {
           setMyPage(data);
+          setPrimaryBadge(data.readingGrowth?.primaryBadge ?? null);
         }
       } catch (error) {
         if (!ignore) {
@@ -209,15 +271,22 @@ export default function MyPage() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, logout]);
+  }, [accessToken, logout, setPrimaryBadge]);
 
-  const user = myPage?.user ?? currentUser;
+  const user = myPage?.user ?? currentUser ?? { email: "", nickname: "", status: "" };
   const interestProfiles = myPage?.interests ?? [];
   const readingPurposes = myPage?.readingPurposes ?? [];
   const readBooks = myPage?.readBooks ?? [];
   const savedBooks = myPage?.savedBooks ?? [];
   const recommendationHistory = myPage?.recommendationHistory ?? [];
   const readingGrowth = myPage?.readingGrowth;
+  const isInitialLoading = isLoading && !myPage;
+  const profileStats = [
+    ["관심", interestProfiles.length],
+    ["목적", readingPurposes.length],
+    ["읽은 책", readBooks.length],
+    ["추천", recommendationHistory.length],
+  ];
 
   async function reloadMyPage() {
     const response = await fetch("/api/me/mypage", {
@@ -235,7 +304,9 @@ export default function MyPage() {
       throw new Error("마이페이지 정보를 다시 불러오지 못했습니다.");
     }
 
-    setMyPage(await response.json());
+    const data = await response.json();
+    setMyPage(data);
+    setPrimaryBadge(data.readingGrowth?.primaryBadge ?? null);
   }
 
   async function addBookInteraction(book, type) {
@@ -263,48 +334,15 @@ export default function MyPage() {
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-8">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-        <aside className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-[#4CAF50]">마이페이지</p>
-          <h1 className="mt-2 text-3xl font-bold leading-tight text-[#1E2A38]">{user.nickname}님의 독서 취향</h1>
-          {readingGrowth?.primaryBadge?.label ? (
-            <div className="mt-3">
-              <span className="inline-flex rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
-                {readingGrowth.primaryBadge.label}
-              </span>
-            </div>
-          ) : null}
-          <p className="mt-4 text-sm leading-6 text-[#6B7280]">
-            관심 분야, 읽은 책, 추천 히스토리를 바탕으로 지금 읽을 만한 교양서를 정리합니다.
-          </p>
-
-          <div className="mt-6 space-y-3 rounded-lg bg-[#F5F3EF] p-4">
-            <div>
-              <p className="text-xs font-medium text-[#6B7280]">이메일</p>
-              <p className="mt-1 text-sm font-semibold text-[#1E2A38]">{user.email}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-[#6B7280]">계정 상태</p>
-              <p className="mt-1 text-sm font-semibold text-[#4CAF50]">{user.status}</p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-            {[
-              ["관심", interestProfiles.length],
-              ["목적", readingPurposes.length],
-              ["읽은 책", readBooks.length],
-              ["추천", recommendationHistory.length],
-            ].map(([label, value]) => (
-              <div className="rounded-lg border border-[#E5E7EB] p-3 text-center" key={label}>
-                <p className="text-xl font-bold text-[#1E2A38]">{value}</p>
-                <p className="mt-1 text-xs text-[#6B7280]">{label}</p>
-              </div>
-            ))}
-          </div>
-        </aside>
+        <ProfileSummary
+          isLoading={isInitialLoading}
+          readingGrowth={readingGrowth}
+          stats={profileStats}
+          user={user}
+        />
 
         <div className="space-y-6">
-          {isLoading ? (
+          {isInitialLoading ? (
             <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280] shadow-sm">
               마이페이지 정보를 불러오는 중입니다.
             </div>
