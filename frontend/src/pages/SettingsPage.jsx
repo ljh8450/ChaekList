@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../App";
+import SocialPostCard from "../components/SocialPostCard";
 
 const visibilityOptions = [
   ["PRIVATE", "비공개"],
@@ -9,6 +10,8 @@ const visibilityOptions = [
 export default function SettingsPage() {
   const { accessToken, logout } = useAuth();
   const [settings, setSettings] = useState(null);
+  const [myPosts, setMyPosts] = useState([]);
+  const [likedPosts, setLikedPosts] = useState([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -29,6 +32,7 @@ export default function SettingsPage() {
       if (!ignore) {
         setSettings(data);
       }
+      loadSocialPosts(() => ignore);
     }
     if (accessToken) {
       loadSettings();
@@ -37,6 +41,40 @@ export default function SettingsPage() {
       ignore = true;
     };
   }, [accessToken, logout]);
+
+  async function loadSocialPosts(shouldIgnore = () => false) {
+    try {
+      const headers = { Authorization: `Bearer ${accessToken}` };
+      const [myPostsResponse, likedPostsResponse] = await Promise.all([
+        fetch("/api/me/social/posts?limit=10", { headers }),
+        fetch("/api/me/social/liked-posts?limit=10", { headers }),
+      ]);
+
+      if (myPostsResponse.status === 401 || likedPostsResponse.status === 401) {
+        logout();
+        return;
+      }
+      if (!myPostsResponse.ok || !likedPostsResponse.ok) {
+        if (!shouldIgnore()) {
+          setMessage("작성 글 또는 좋아요한 글을 불러오지 못했습니다.");
+        }
+        return;
+      }
+
+      const [nextMyPosts, nextLikedPosts] = await Promise.all([
+        myPostsResponse.json(),
+        likedPostsResponse.json(),
+      ]);
+      if (!shouldIgnore()) {
+        setMyPosts(Array.isArray(nextMyPosts) ? nextMyPosts : []);
+        setLikedPosts(Array.isArray(nextLikedPosts) ? nextLikedPosts : []);
+      }
+    } catch {
+      if (!shouldIgnore()) {
+        setMessage("작성 글 또는 좋아요한 글을 불러오지 못했습니다.");
+      }
+    }
+  }
 
   async function updatePrivacy(field, value) {
     const nextPrivacy = { ...settings.privacy, [field]: value };
@@ -132,6 +170,44 @@ export default function SettingsPage() {
           <ToggleRow label="좋아요 알림" checked={settings.notifications.likeNotificationsEnabled} onChange={(value) => updateNotification("likeNotificationsEnabled", value)} />
           <ToggleRow label="신고 처리 상태 알림" checked={settings.notifications.reportStatusNotificationsEnabled} onChange={(value) => updateNotification("reportStatusNotificationsEnabled", value)} />
           <ToggleRow label="서비스 알림" checked={settings.notifications.serviceNotificationsEnabled} onChange={(value) => updateNotification("serviceNotificationsEnabled", value)} />
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#4CAF50]">내 활동</p>
+            <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">내가 작성한 글</h2>
+          </div>
+          <span className="text-sm font-semibold text-[#6B7280]">{myPosts.length}개</span>
+        </div>
+        <div className="mt-4 space-y-3">
+          {myPosts.length === 0 ? (
+            <p className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-sm text-[#6B7280]">작성한 글이 없습니다.</p>
+          ) : (
+            myPosts.map((post) => (
+              <SocialPostCard key={post.id} post={post} compact onChanged={() => loadSocialPosts()} />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#F59E0B]">내 활동</p>
+            <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">좋아요 누른 글</h2>
+          </div>
+          <span className="text-sm font-semibold text-[#6B7280]">{likedPosts.length}개</span>
+        </div>
+        <div className="mt-4 space-y-3">
+          {likedPosts.length === 0 ? (
+            <p className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-sm text-[#6B7280]">좋아요 누른 글이 없습니다.</p>
+          ) : (
+            likedPosts.map((post) => (
+              <SocialPostCard key={post.id} post={post} compact onChanged={() => loadSocialPosts()} />
+            ))
+          )}
         </div>
       </section>
 

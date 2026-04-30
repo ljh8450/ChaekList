@@ -38,7 +38,10 @@ export default function PublicProfilePage() {
       {profile ? (
         <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold text-[#4CAF50]">공개 프로필</p>
-          <h1 className="mt-2 text-3xl font-bold text-[#1E2A38]">{profile.nickname}</h1>
+          <h1 className="mt-2 flex flex-wrap items-center gap-2 text-3xl font-bold text-[#1E2A38]">
+            <PrimaryBadge badge={profile.primaryBadge} />
+            <span>{profile.nickname}</span>
+          </h1>
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-4">
               <p className="text-xs font-semibold text-[#6B7280]">공개 게시글</p>
@@ -55,5 +58,19 @@ export default function PublicProfilePage() {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function PrimaryBadge({ badge }) {
+  if (!badge?.label) {
+    return null;
+  }
+  return (
+    <span
+      className="inline-flex max-w-full items-center rounded-full border border-[#D7E7D9] bg-[#F1F8F2] px-2.5 py-1 text-xs font-semibold text-[#2F6F3E]"
+      title={badge.description ?? badge.label}
+    >
+      {badge.label}
+    </span>
   );
 }

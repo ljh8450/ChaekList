@@ -77,6 +77,26 @@ public class SocialController {
 		return socialService.createPost(authenticate(authorizationHeader), request);
 	}
 
+	@GetMapping("/api/me/social/posts")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "내가 작성한 글 조회", description = "현재 사용자가 작성한 활성 게시글을 최신순으로 조회합니다.")
+	public List<SocialPostResponse> myPosts(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestParam(defaultValue = "20") int limit
+	) {
+		return socialService.getMyPosts(authenticate(authorizationHeader), limit);
+	}
+
+	@GetMapping("/api/me/social/liked-posts")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "좋아요한 글 조회", description = "현재 사용자가 좋아요한 공개 게시글을 최신순으로 조회합니다.")
+	public List<SocialPostResponse> likedPosts(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestParam(defaultValue = "20") int limit
+	) {
+		return socialService.getLikedPosts(authenticate(authorizationHeader), limit);
+	}
+
 	@PatchMapping("/api/social/posts/{postId}")
 	@SecurityRequirement(name = "bearerAuth")
 	@Operation(summary = "공유 게시글 공개 범위 변경", description = "본인 게시글의 공개 범위를 PUBLIC 또는 PRIVATE로 변경합니다.")

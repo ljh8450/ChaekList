@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SearchItem;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SearchResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SearchSection;
@@ -18,9 +19,11 @@ public class SearchService {
 	private static final Set<String> SEARCH_TYPES = Set.of("ALL", "BOOKS", "KEYWORDS", "POSTS", "USERS");
 
 	private final JdbcTemplate jdbcTemplate;
+	private final MyPageService myPageService;
 
-	public SearchService(JdbcTemplate jdbcTemplate) {
+	public SearchService(JdbcTemplate jdbcTemplate, MyPageService myPageService) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.myPageService = myPageService;
 	}
 
 	public SearchResponse search(String query, String type, int limit) {
@@ -177,9 +180,8 @@ public class SearchService {
 					u.nickname,
 					COUNT(DISTINCT sp.id) AS public_post_count
 				FROM users u
-				JOIN user_public_profiles upp
+				LEFT JOIN user_public_profiles upp
 					ON upp.user_id = u.id
-					AND upp.profile_public = TRUE
 				LEFT JOIN social_posts sp
 					ON sp.user_id = u.id
 					AND sp.visibility = 'PUBLIC'
@@ -191,6 +193,21 @@ public class SearchService {
 					)
 				WHERE u.status = 'ACTIVE'
 					AND LOWER(u.nickname) LIKE LOWER(?)
+					AND (
+						COALESCE(upp.profile_public, FALSE) = TRUE
+						OR EXISTS (
+							SELECT 1
+							FROM social_posts visible_post
+							WHERE visible_post.user_id = u.id
+								AND visible_post.visibility = 'PUBLIC'
+								AND visible_post.status = 'ACTIVE'
+								AND NOT EXISTS (
+									SELECT 1
+									FROM social_admin_hidden_posts hidden_visible_post
+									WHERE hidden_visible_post.post_id = visible_post.id
+								)
+						)
+					)
 				GROUP BY u.id, u.nickname
 				ORDER BY public_post_count DESC, u.nickname ASC
 				LIMIT ?
@@ -200,7 +217,8 @@ public class SearchService {
 						"user",
 						resultSet.getString("nickname"),
 						"공개 게시글 " + resultSet.getInt("public_post_count") + "개",
-						"/users/" + resultSet.getString("id")
+						"/users/" + resultSet.getString("id"),
+						myPageService.getPublicPrimaryReadingGrowthBadge(resultSet.getLong("id"))
 				),
 				likeQuery(normalizedQuery),
 				normalizeLimit(limit)

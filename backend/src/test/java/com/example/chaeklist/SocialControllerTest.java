@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -171,7 +172,6 @@ class SocialControllerTest {
 		createSocialTables();
 		createUserPublicProfilesTable();
 		long userId = userId();
-		insertPublicProfile(userId);
 		insertPublicTextPost(userId, "보이는 공개 기록");
 		long hiddenPostId = insertPublicTextPost(userId, "숨김 공개 기록");
 		hidePost(hiddenPostId);
@@ -189,6 +189,57 @@ class SocialControllerTest {
 
 	@Test
 	@Transactional
+	void canMakePrivatePostPublicAgain() throws Exception {
+		createSocialTables();
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		long postId = insertPrivateTextPost(userId, "공개로 돌릴 기록");
+
+		mockMvc.perform(patch("/api/social/posts/{postId}", postId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "visibility": "PUBLIC"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.visibility", is("PUBLIC")));
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is((int) postId)));
+	}
+
+	@Test
+	@Transactional
+	void showsPublicPrimaryBadgeOnPublicSocialSurfaces() throws Exception {
+		createSocialTables();
+		createUserBookInteractionsTable();
+		createUserPublicProfilesTable();
+		long userId = userId();
+		setBadgesPublic(userId);
+		insertInteraction(userId, 903, "READ", "2026-04-23 10:00:00");
+		insertPublicTextPost(userId, "대표 배지 공개 기록");
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].primaryBadge.code", is("FIRST_READ")))
+				.andExpect(jsonPath("$[0].primaryBadge.label", is("첫 독서 기록")));
+
+		mockMvc.perform(get("/api/users/{userId}/public-profile", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.primaryBadge.code", is("FIRST_READ")));
+
+		mockMvc.perform(get("/api/search/users")
+						.param("query", "quiet"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].primaryBadge.code", is("FIRST_READ")));
+	}
+
+	@Test
+	@Transactional
 	void returnsPublicFeedWhenBearerTokenIsInvalid() throws Exception {
 		createSocialTables();
 		insertPublicTextPost(userId(), "토큰이 없어도 볼 공개 기록");
@@ -198,6 +249,35 @@ class SocialControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(1)))
 				.andExpect(jsonPath("$[0].likedByMe", is(false)));
+	}
+
+	@Test
+	@Transactional
+	void returnsMyPostsAndLikedPosts() throws Exception {
+		createSocialTables();
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		insertPrivateTextPost(userId, "내 비공개 기록");
+		long publicPostId = insertPublicTextPost(userId, "내 공개 기록");
+
+		mockMvc.perform(post("/api/social/posts/{postId}/likes", publicPostId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/me/social/posts")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].mine", is(true)))
+				.andExpect(jsonPath("$[?(@.content == '내 비공개 기록')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.content == '내 공개 기록')]", hasSize(1)));
+
+		mockMvc.perform(get("/api/me/social/liked-posts")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].content", is("내 공개 기록")))
+				.andExpect(jsonPath("$[0].likedByMe", is(true)));
 	}
 
 	private String loginAndExtractAccessToken() throws Exception {
@@ -258,6 +338,17 @@ class SocialControllerTest {
 					user_id, profile_public, growth_summary_public, public_post_count, created_at, updated_at
 				)
 				VALUES (?, TRUE, FALSE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", userId);
+	}
+
+	private void setBadgesPublic(long userId) {
+		jdbcTemplate.update("DELETE FROM user_privacy_settings WHERE user_id = ?", userId);
+		jdbcTemplate.update("""
+				INSERT INTO user_privacy_settings (
+					user_id, read_books_visibility, saved_books_visibility, reading_growth_visibility,
+					badges_visibility, interest_categories_visibility, created_at, updated_at
+				)
+				VALUES (?, 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PUBLIC', 'PRIVATE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", userId);
 	}
 
@@ -337,6 +428,18 @@ class SocialControllerTest {
 					hidden_by_user_id BIGINT,
 					reason VARCHAR(255),
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_privacy_settings (
+					user_id BIGINT PRIMARY KEY,
+					read_books_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
+					saved_books_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
+					reading_growth_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
+					badges_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
+					interest_categories_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
 	}

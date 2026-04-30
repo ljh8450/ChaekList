@@ -27,6 +27,7 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
   const { accessToken, currentUser } = useAuth();
   const isMine = Boolean(post.mine ?? (currentUser?.id && post.userId === currentUser.id));
   const likedByMe = Boolean(post.likedByMe);
+  const isPrivate = post.visibility === "PRIVATE";
   const label = postLabels[post.postType] ?? post.postType;
 
   async function request(path, options = {}) {
@@ -51,9 +52,12 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {post.userId ? (
-              <Link className="font-semibold text-[#1E2A38] hover:underline" to={`/users/${post.userId}`}>
-                {post.nickname}
-              </Link>
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <PrimaryBadge badge={post.primaryBadge} />
+                <Link className="font-semibold text-[#1E2A38] hover:underline" to={`/users/${post.userId}`}>
+                  {post.nickname}
+                </Link>
+              </span>
             ) : (
               <span className="font-semibold text-[#1E2A38]">{post.nickname ?? "탈퇴한 사용자"}</span>
             )}
@@ -115,12 +119,12 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
               type="button"
               onClick={() =>
                 request(`/api/social/posts/${post.id}`, {
-                  body: JSON.stringify({ visibility: "PRIVATE" }),
+                  body: JSON.stringify({ visibility: isPrivate ? "PUBLIC" : "PRIVATE" }),
                   method: "PATCH",
                 })
               }
             >
-              비공개 전환
+              {isPrivate ? "공개 전환" : "비공개 전환"}
             </button>
             <button
               className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-[#B91C1C] transition hover:border-[#B91C1C]"
@@ -155,5 +159,19 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
         ) : null}
       </div>
     </article>
+  );
+}
+
+function PrimaryBadge({ badge }) {
+  if (!badge?.label) {
+    return null;
+  }
+  return (
+    <span
+      className="inline-flex max-w-[10rem] shrink-0 items-center rounded-full border border-[#D7E7D9] bg-[#F1F8F2] px-2 py-0.5 text-[11px] font-semibold text-[#2F6F3E]"
+      title={badge.description ?? badge.label}
+    >
+      {badge.label}
+    </span>
   );
 }

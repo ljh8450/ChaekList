@@ -97,7 +97,10 @@ export default function SearchResultsPage() {
                     to={itemPath(item)}
                   >
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="font-bold text-[#1E2A38]">{item.title}</p>
+                      <p className="flex min-w-0 flex-wrap items-center gap-2 font-bold text-[#1E2A38]">
+                        {item.type === "user" ? <PrimaryBadge badge={item.primaryBadge} /> : null}
+                        <span>{item.title}</span>
+                      </p>
                       <span className="text-xs font-semibold text-[#6B7280]">{item.type}</span>
                     </div>
                     <p className="mt-2 break-keep text-sm leading-6 text-[#6B7280]">{item.summary}</p>
@@ -125,4 +128,18 @@ function itemPath(item) {
     return "/social";
   }
   return item.detailPath;
+}
+
+function PrimaryBadge({ badge }) {
+  if (!badge?.label) {
+    return null;
+  }
+  return (
+    <span
+      className="inline-flex max-w-[10rem] shrink-0 items-center rounded-full border border-[#D7E7D9] bg-[#F1F8F2] px-2 py-0.5 text-[11px] font-semibold text-[#2F6F3E]"
+      title={badge.description ?? badge.label}
+    >
+      {badge.label}
+    </span>
+  );
 }

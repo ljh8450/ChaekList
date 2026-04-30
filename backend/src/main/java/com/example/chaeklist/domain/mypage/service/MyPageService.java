@@ -56,7 +56,18 @@ public class MyPageService {
 	}
 
 	public Badge getPrimaryReadingGrowthBadge(AuthenticatedUser user) {
-		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(user.id())));
+		return getPrimaryReadingGrowthBadge(user.id());
+	}
+
+	public Badge getPrimaryReadingGrowthBadge(long userId) {
+		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(userId)));
+	}
+
+	public Badge getPublicPrimaryReadingGrowthBadge(long userId) {
+		if (!isBadgesPublic(userId)) {
+			return null;
+		}
+		return getPrimaryReadingGrowthBadge(userId);
 	}
 
 	public OnboardingStatusResponse getOnboardingStatus(AuthenticatedUser user) {
@@ -896,6 +907,16 @@ public class MyPageService {
 	private LocalDateTime readLocalDateTime(ResultSet resultSet, String columnName) throws SQLException {
 		java.sql.Timestamp timestamp = resultSet.getTimestamp(columnName);
 		return timestamp == null ? null : timestamp.toLocalDateTime();
+	}
+
+	private boolean isBadgesPublic(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_privacy_settings
+				WHERE user_id = ?
+					AND badges_visibility = 'PUBLIC'
+				""", Integer.class, userId);
+		return count != null && count > 0;
 	}
 
 	private record ReadingGrowthMetrics(

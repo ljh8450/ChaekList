@@ -8,6 +8,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
+import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BookSummary;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
@@ -42,9 +44,11 @@ public class SocialService {
 	private static final Set<String> REPORT_REASONS = Set.of("SPAM", "ABUSE", "INAPPROPRIATE_NICKNAME", "INAPPROPRIATE_CONTENT", "OTHER");
 
 	private final JdbcTemplate jdbcTemplate;
+	private final MyPageService myPageService;
 
-	public SocialService(JdbcTemplate jdbcTemplate) {
+	public SocialService(JdbcTemplate jdbcTemplate, MyPageService myPageService) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.myPageService = myPageService;
 	}
 
 	public List<SocialPostResponse> getFeed(AuthenticatedUser user, String type, int limit) {
@@ -115,6 +119,58 @@ public class SocialService {
 				normalizedType,
 				nullableUserId(user),
 				nullableUserId(user),
+				normalizeLimit(limit)
+		);
+	}
+
+	public List<SocialPostResponse> getMyPosts(AuthenticatedUser user, int limit) {
+		return jdbcTemplate.query("""
+				SELECT %s
+				FROM social_posts sp
+				LEFT JOIN users u ON u.id = sp.user_id
+				LEFT JOIN books b ON b.id = sp.book_id
+				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+				WHERE sp.user_id = ?
+					AND sp.status = 'ACTIVE'
+				ORDER BY sp.created_at DESC, sp.id DESC
+				LIMIT ?
+				""".formatted(postSelectColumns(), primaryCategorySubquery()),
+				this::mapPost,
+				user.id(),
+				user.id(),
+				user.id(),
+				user.id(),
+				user.id(),
+				normalizeLimit(limit)
+		);
+	}
+
+	public List<SocialPostResponse> getLikedPosts(AuthenticatedUser user, int limit) {
+		return jdbcTemplate.query("""
+				SELECT %s
+				FROM social_post_likes liked_posts
+				JOIN social_posts sp ON sp.id = liked_posts.post_id
+				LEFT JOIN users u ON u.id = sp.user_id
+				LEFT JOIN books b ON b.id = sp.book_id
+				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+				WHERE liked_posts.user_id = ?
+					AND sp.visibility = 'PUBLIC'
+					AND sp.status = 'ACTIVE'
+					AND (sp.user_id IS NULL OR u.status = 'ACTIVE')
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
+				ORDER BY liked_posts.created_at DESC, sp.id DESC
+				LIMIT ?
+				""".formatted(postSelectColumns(), primaryCategorySubquery()),
+				this::mapPost,
+				user.id(),
+				user.id(),
+				user.id(),
+				user.id(),
+				user.id(),
 				normalizeLimit(limit)
 		);
 	}
@@ -248,17 +304,20 @@ public class SocialService {
 				""",
 				(resultSet, rowNumber) -> {
 					boolean profilePublic = resultSet.getBoolean("profile_public");
-					if (!profilePublic) {
+					int publicPostCount = resultSet.getInt("public_post_count");
+					boolean hasPublicProfile = profilePublic || publicPostCount > 0;
+					if (!hasPublicProfile) {
 						throw new SocialNotFoundException("Public profile not found.");
 					}
 					boolean growthPublic = resultSet.getBoolean("growth_summary_public");
 					return new PublicProfileResponse(
 							resultSet.getLong("id"),
 							resultSet.getString("nickname"),
-							true,
+							hasPublicProfile,
 							growthPublic,
 							growthPublic ? "공개된 독서 성장 요약입니다." : null,
-							resultSet.getInt("public_post_count")
+							publicPostCount,
+							publicPrimaryBadge(resultSet.getLong("id"))
 					);
 				},
 				userId
@@ -652,6 +711,7 @@ public class SocialService {
 	}
 
 	private SocialPostResponse mapPost(ResultSet resultSet, int rowNumber) throws SQLException {
+		Long authorUserId = getNullableLong(resultSet, "user_id");
 		Long bookId = getNullableLong(resultSet, "book_id");
 		BookSummary book = bookId == null ? null : new BookSummary(
 				bookId,
@@ -662,7 +722,7 @@ public class SocialService {
 		);
 		return new SocialPostResponse(
 				resultSet.getLong("id"),
-				getNullableLong(resultSet, "user_id"),
+				authorUserId,
 				resultSet.getString("display_nickname"),
 				resultSet.getBoolean("author_anonymized"),
 				resultSet.getString("post_type"),
@@ -674,8 +734,16 @@ public class SocialService {
 				resultSet.getBoolean("liked_by_me"),
 				resultSet.getBoolean("mine"),
 				readLocalDateTime(resultSet, "created_at"),
-				readLocalDateTime(resultSet, "updated_at")
+				readLocalDateTime(resultSet, "updated_at"),
+				publicPrimaryBadge(authorUserId)
 		);
+	}
+
+	private Badge publicPrimaryBadge(Long userId) {
+		if (userId == null) {
+			return null;
+		}
+		return myPageService.getPublicPrimaryReadingGrowthBadge(userId);
 	}
 
 	private String postSelectColumns() {
