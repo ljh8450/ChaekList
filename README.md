@@ -284,38 +284,27 @@ ChaekList는 일반 베스트셀러 목록보다 “지금 읽기 좋은 교양�
 ### Frontend
 
 ```text
-사용자 브라우저
-┌─────────────────────────────────────────────────────────────┐
-│ React SPA                                                    │
-│                                                             │
-│  ┌────────────────────┐     ┌────────────────────────────┐  │
-│  │ App / Router       │     │ Auth State                 │  │
-│  │ - public routes    │     │ - access token             │  │
-│  │ - protected routes │     │ - current user             │  │
-│  │ - social routes    │     │ - primary badge            │  │
-│  └─────────┬──────────┘     └─────────────┬──────────────┘  │
-│            │                              │                 │
-│  ┌─────────▼──────────────────────────────▼──────────────┐  │
-│  │ Pages                                                  │  │
-│  │ - Home / Ranking / Book Detail                         │  │
-│  │ - Onboarding / My Page / Settings                      │  │
-│  │ - Search Results                                       │  │
-│  │ - Social Feed / Public Profile                         │  │
-│  └─────────┬──────────────────────────────────────────────┘  │
-│            │                                                 │
-│  ┌─────────▼──────────────────────────────────────────────┐  │
-│  │ Components                                             │  │
-│  │ - Header search                                        │  │
-│  │ - Book cards / search panels                           │  │
-│  │ - SocialPostCard                                       │  │
-│  │ - settings rows / profile sections                     │  │
-│  └─────────┬──────────────────────────────────────────────┘  │
-│            │                                                 │
-│            │ HTTPS / REST JSON                              │
-└────────────┼────────────────────────────────────────────────┘
-             │
-             ▼
-       Backend API
++----------------------------------------------------------------+
+| Browser                                                        |
++----------------------------------------------------------------+
+| React SPA                                                      |
+|                                                                |
+| Layer              Responsibilities                            |
+| -----------------  ------------------------------------------- |
+| App / Router       public, protected, social routes            |
+| Auth State         access token, current user, primary badge   |
+| Pages              Home, Ranking, Book Detail                  |
+|                    Onboarding, My Page, Settings               |
+|                    Search Results, Social Feed, Public Profile |
+| Components         Header search, Book cards, Search panels    |
+|                    SocialPostCard, Settings/Profile sections   |
+| API Client         /api/** HTTPS REST JSON                     |
++----------------------------------------------------------------+
+        |
+        v
++----------------------------------------------------------------+
+| Backend API                                                    |
++----------------------------------------------------------------+
 ```
 
 Frontend 배포 단위:
@@ -337,48 +326,31 @@ Frontend 배포 단위:
 ### Backend
 
 ```text
-Backend API Server
-┌─────────────────────────────────────────────────────────────┐
-│ Spring Boot REST API                                        │
-│                                                             │
-│  ┌────────────────────┐   ┌──────────────────────────────┐  │
-│  │ Auth               │   │ Book / Recommendation         │  │
-│  │ - signup/login     │   │ - home                        │  │
-│  │ - token validation │   │ - rankings / trends           │  │
-│  │ - bearer auth      │   │ - book detail / search        │  │
-│  └─────────┬──────────┘   │ - personalized recommendation │  │
-│            │              └──────────────┬───────────────┘  │
-│  ┌─────────▼──────────┐   ┌──────────────▼───────────────┐  │
-│  │ My Page / Growth   │   │ Search                       │  │
-│  │ - onboarding       │   │ - books / keywords            │  │
-│  │ - book interaction │   │ - public posts                │  │
-│  │ - reading growth   │   │ - public users                │  │
-│  │ - primary badge    │   │ - privacy-safe results        │  │
-│  └─────────┬──────────┘   └──────────────┬───────────────┘  │
-│            │                             │                  │
-│  ┌─────────▼─────────────────────────────▼───────────────┐  │
-│  │ Social / Settings / Moderation                         │  │
-│  │ - social posts / feed                                  │  │
-│  │ - likes / unlike with idempotency                      │  │
-│  │ - public profile                                       │  │
-│  │ - privacy settings / notification settings             │  │
-│  │ - reports / blocks / admin hidden posts                │  │
-│  │ - withdrawal anonymization                             │  │
-│  └─────────┬──────────────────────────────────────────────┘  │
-│            │                                                 │
-│            │ JDBC / JPA                                      │
-└────────────┼────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ MySQL                                                       │
-│ - users / auth-related data                                │
-│ - books / categories / keywords / rankings                  │
-│ - recommendations                                           │
-│ - user interests / reading purposes / book interactions     │
-│ - social posts / likes / reports / blocks / hidden posts    │
-│ - privacy settings / notification settings / public profile │
-└─────────────────────────────────────────────────────────────┘
++----------------------------------------------------------------+
+| Spring Boot API Server                                         |
++----------------------------------------------------------------+
+| Module             Responsibilities                            |
+| -----------------  ------------------------------------------- |
+| Auth               signup/login, token validation, bearer auth |
+| Book/Recommend     home, rankings, trends, detail, search      |
+|                    personalized recommendation                 |
+| My Page/Growth     onboarding, interactions, growth, badges    |
+| Search             books, keywords, public posts/users         |
+| Social             posts, feed, likes, public profile          |
+| Settings           privacy, notification, withdrawal           |
+| Moderation         reports, blocks, hidden posts               |
++----------------------------------------------------------------+
+        |
+        | JDBC / JPA
+        v
++----------------------------------------------------------------+
+| MySQL                                                          |
++----------------------------------------------------------------+
+| users, books, categories, keywords, rankings                   |
+| recommendations, interactions, reading purposes                |
+| social posts, likes, reports, blocks, hidden posts             |
+| privacy settings, notification settings, public profiles       |
++----------------------------------------------------------------+
 ```
 
 Backend 배포 단위:
@@ -402,21 +374,23 @@ Backend 배포 단위:
 ### 배포 흐름
 
 ```text
-User
-  │
-  ▼
-CDN / Web Server
-  │  React static assets
-  ▼
-Browser SPA
-  │  /api/** HTTPS requests
-  ▼
-Spring Boot API
-  │
-  ├── MySQL
-  │
-  └── External APIs (후속)
-      └── Kakao Book Search
++------------------+      +------------------+      +------------------+
+| User             | ---> | CDN / Web Server | ---> | Browser SPA      |
++------------------+      +------------------+      +--------+---------+
+                                                               |
+                                                               | /api/** HTTPS
+                                                               v
+                                                      +--------+---------+
+                                                      | Spring Boot API  |
+                                                      +--------+---------+
+                                                               |
+                                  +----------------------------+----------------------------+
+                                  |                                                         |
+                                  v                                                         v
+                         +--------+---------+                                      +--------+---------+
+                         | MySQL            |                                      | External APIs    |
+                         | primary storage  |                                      | Kakao Search     |
+                         +------------------+                                      +------------------+
 ```
 
 운영 시 기본 원칙:
