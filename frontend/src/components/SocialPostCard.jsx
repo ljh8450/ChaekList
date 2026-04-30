@@ -25,7 +25,8 @@ function formatDate(value) {
 
 export default function SocialPostCard({ post, onChanged, compact = false }) {
   const { accessToken, currentUser } = useAuth();
-  const isMine = Boolean(currentUser?.id && post.userId === currentUser.id);
+  const isMine = Boolean(post.mine ?? (currentUser?.id && post.userId === currentUser.id));
+  const likedByMe = Boolean(post.likedByMe);
   const label = postLabels[post.postType] ?? post.postType;
 
   async function request(path, options = {}) {
@@ -92,11 +93,19 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
       <div className="mt-4 flex flex-wrap gap-2">
         {accessToken ? (
           <button
-            className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-semibold text-[#1E2A38] transition hover:border-[#1E2A38]"
+            className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+              likedByMe
+                ? "border-[#1E2A38] bg-[#1E2A38] text-white hover:bg-[#27384a]"
+                : "border-[#E5E7EB] text-[#1E2A38] hover:border-[#1E2A38]"
+            }`}
             type="button"
-            onClick={() => request(`/api/social/posts/${post.id}/likes`, { method: "POST" })}
+            onClick={() =>
+              request(`/api/social/posts/${post.id}/likes`, {
+                method: likedByMe ? "DELETE" : "POST",
+              })
+            }
           >
-            좋아요
+            {likedByMe ? "좋아요 취소" : "좋아요"}
           </button>
         ) : null}
         {isMine ? (

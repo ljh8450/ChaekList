@@ -76,6 +76,10 @@ public class SocialService {
 					this::mapPost,
 					nullableUserId(user),
 					nullableUserId(user),
+					nullableUserId(user),
+					nullableUserId(user),
+					nullableUserId(user),
+					nullableUserId(user),
 					normalizeLimit(limit)
 			);
 		}
@@ -104,6 +108,10 @@ public class SocialService {
 				LIMIT ?
 				""".formatted(postSelectColumns(), primaryCategorySubquery()),
 				this::mapPost,
+				nullableUserId(user),
+				nullableUserId(user),
+				nullableUserId(user),
+				nullableUserId(user),
 				normalizedType,
 				nullableUserId(user),
 				nullableUserId(user),
@@ -448,6 +456,10 @@ public class SocialService {
 					AND (sp.user_id = ? OR sp.user_id IS NULL)
 				""".formatted(postSelectColumns(), primaryCategorySubquery()),
 				this::mapPost,
+				userId,
+				userId,
+				userId,
+				userId,
 				postId,
 				userId
 		);
@@ -466,6 +478,10 @@ public class SocialService {
 				LIMIT 1
 				""".formatted(postSelectColumns(), primaryCategorySubquery()),
 				this::mapPost,
+				userId,
+				userId,
+				userId,
+				userId,
 				userId,
 				idempotencyKey
 		);
@@ -638,8 +654,8 @@ public class SocialService {
 				book,
 				resultSet.getString("content"),
 				resultSet.getInt("like_count"),
-				false,
-				false,
+				resultSet.getBoolean("liked_by_me"),
+				resultSet.getBoolean("mine"),
 				readLocalDateTime(resultSet, "created_at"),
 				readLocalDateTime(resultSet, "updated_at")
 		);
@@ -668,6 +684,20 @@ public class SocialService {
 					FROM social_post_likes likes
 					WHERE likes.post_id = sp.id
 				) AS like_count,
+				CASE
+					WHEN ? IS NULL THEN FALSE
+					ELSE EXISTS (
+						SELECT 1
+						FROM social_post_likes my_like
+						WHERE my_like.post_id = sp.id
+							AND my_like.user_id = ?
+					)
+				END AS liked_by_me,
+				CASE
+					WHEN ? IS NULL THEN FALSE
+					WHEN sp.user_id = ? THEN TRUE
+					ELSE FALSE
+				END AS mine,
 				sp.created_at,
 				sp.updated_at
 				""";

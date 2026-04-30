@@ -82,11 +82,24 @@ class SocialControllerTest {
 				.andExpect(jsonPath("$.liked", is(true)))
 				.andExpect(jsonPath("$.likeCount", is(1)));
 
+		mockMvc.perform(get("/api/social/feed")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].likedByMe", is(true)))
+				.andExpect(jsonPath("$[0].mine", is(true)))
+				.andExpect(jsonPath("$[0].likeCount", is(1)));
+
 		mockMvc.perform(delete("/api/social/posts/{postId}/likes", postId)
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.liked", is(false)))
 				.andExpect(jsonPath("$.likeCount", is(0)));
+
+		mockMvc.perform(get("/api/social/feed")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].likedByMe", is(false)))
+				.andExpect(jsonPath("$[0].likeCount", is(0)));
 	}
 
 	@Test
