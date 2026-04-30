@@ -182,6 +182,8 @@ public class SearchService {
 				FROM users u
 				LEFT JOIN user_public_profiles upp
 					ON upp.user_id = u.id
+				LEFT JOIN user_privacy_settings ups
+					ON ups.user_id = u.id
 				LEFT JOIN social_posts sp
 					ON sp.user_id = u.id
 					AND sp.visibility = 'PUBLIC'
@@ -192,7 +194,6 @@ public class SearchService {
 						WHERE hidden.post_id = sp.id
 					)
 				WHERE u.status = 'ACTIVE'
-					AND LOWER(u.nickname) LIKE LOWER(?)
 					AND (
 						COALESCE(upp.profile_public, FALSE) = TRUE
 						OR EXISTS (
@@ -205,7 +206,40 @@ public class SearchService {
 									SELECT 1
 									FROM social_admin_hidden_posts hidden_visible_post
 									WHERE hidden_visible_post.post_id = visible_post.id
+							)
+						)
+					)
+					AND (
+						LOWER(u.nickname) LIKE LOWER(?)
+						OR EXISTS (
+							SELECT 1
+							FROM social_posts matched_post
+							LEFT JOIN books matched_book ON matched_book.id = matched_post.book_id
+							WHERE matched_post.user_id = u.id
+								AND matched_post.visibility = 'PUBLIC'
+								AND matched_post.status = 'ACTIVE'
+								AND NOT EXISTS (
+									SELECT 1
+									FROM social_admin_hidden_posts hidden_matched_post
+									WHERE hidden_matched_post.post_id = matched_post.id
 								)
+								AND (
+									LOWER(COALESCE(matched_post.content, '')) LIKE LOWER(?)
+									OR LOWER(COALESCE(matched_book.title, '')) LIKE LOWER(?)
+									OR LOWER(COALESCE(matched_book.author, '')) LIKE LOWER(?)
+									OR LOWER(matched_post.post_type) LIKE LOWER(?)
+								)
+						)
+						OR (
+							COALESCE(ups.interest_categories_visibility, 'PRIVATE') IN ('PUBLIC', 'PARTIAL')
+							AND EXISTS (
+								SELECT 1
+								FROM user_interest_categories uic
+								JOIN categories c ON c.id = uic.category_id
+								WHERE uic.user_id = u.id
+									AND c.is_active = TRUE
+									AND LOWER(c.name) LIKE LOWER(?)
+							)
 						)
 					)
 				GROUP BY u.id, u.nickname
@@ -220,6 +254,11 @@ public class SearchService {
 						"/users/" + resultSet.getString("id"),
 						myPageService.getPublicPrimaryReadingGrowthBadge(resultSet.getLong("id"))
 				),
+				likeQuery(normalizedQuery),
+				likeQuery(normalizedQuery),
+				likeQuery(normalizedQuery),
+				likeQuery(normalizedQuery),
+				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
 				normalizeLimit(limit)
 		);

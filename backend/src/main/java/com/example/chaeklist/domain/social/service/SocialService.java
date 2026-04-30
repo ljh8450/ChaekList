@@ -258,6 +258,9 @@ public class SocialService {
 	@Transactional
 	public LikeResponse likePost(AuthenticatedUser user, long postId) {
 		validatePublicActivePost(postId);
+		if (hasLikedPost(postId, user.id())) {
+			return new LikeResponse(postId, true, countLikes(postId));
+		}
 		try {
 			jdbcTemplate.update("""
 					INSERT INTO social_post_likes (post_id, user_id, created_at)
@@ -708,6 +711,16 @@ public class SocialService {
 				WHERE post_id = ?
 				""", Integer.class, postId);
 		return count == null ? 0 : count;
+	}
+
+	private boolean hasLikedPost(long postId, long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_post_likes
+				WHERE post_id = ?
+					AND user_id = ?
+				""", Integer.class, postId, userId);
+		return count != null && count > 0;
 	}
 
 	private SocialPostResponse mapPost(ResultSet resultSet, int rowNumber) throws SQLException {
