@@ -220,8 +220,12 @@ public class SocialController {
 	}
 
 	private java.util.Optional<AuthenticatedUser> optionalAuthenticate(String authorizationHeader) {
-		return bearerTokenResolver.resolve(authorizationHeader)
-				.map(tokenService::validateAccessToken);
+		try {
+			return bearerTokenResolver.resolve(authorizationHeader)
+					.map(tokenService::validateAccessToken);
+		} catch (TokenService.TokenException exception) {
+			return java.util.Optional.empty();
+		}
 	}
 
 	@ExceptionHandler(UnauthorizedException.class)

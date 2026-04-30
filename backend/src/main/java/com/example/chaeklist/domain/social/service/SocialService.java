@@ -237,6 +237,11 @@ public class SocialService {
 					ON sp.user_id = u.id
 					AND sp.visibility = 'PUBLIC'
 					AND sp.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
 				WHERE u.id = ?
 					AND u.status = 'ACTIVE'
 				GROUP BY u.id, u.nickname, upp.profile_public, upp.growth_summary_public
@@ -529,14 +534,26 @@ public class SocialService {
 
 	private void validateSavedBook(long userId, Long bookId, Long sourceInteractionId) {
 		validateInteractionOwner(userId, bookId, sourceInteractionId, "SAVE");
-		Integer unsaves = jdbcTemplate.queryForObject("""
+		Integer currentSaves = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
-				FROM user_book_interactions
-				WHERE user_id = ?
-					AND book_id = ?
-					AND interaction_type = 'UNSAVE'
+				FROM user_book_interactions save_interactions
+				LEFT JOIN user_book_interactions later_unsave
+					ON later_unsave.user_id = save_interactions.user_id
+					AND later_unsave.book_id = save_interactions.book_id
+					AND later_unsave.interaction_type = 'UNSAVE'
+					AND (
+						later_unsave.created_at > save_interactions.created_at
+						OR (
+							later_unsave.created_at = save_interactions.created_at
+							AND later_unsave.id > save_interactions.id
+						)
+					)
+				WHERE save_interactions.user_id = ?
+					AND save_interactions.book_id = ?
+					AND save_interactions.interaction_type = 'SAVE'
+					AND later_unsave.id IS NULL
 				""", Integer.class, userId, bookId);
-		if (unsaves != null && unsaves > 0) {
+		if (currentSaves == null || currentSaves == 0) {
 			throw new SocialRequestException("Book is not currently saved.");
 		}
 	}

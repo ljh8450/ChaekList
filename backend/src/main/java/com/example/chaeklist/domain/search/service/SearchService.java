@@ -184,6 +184,11 @@ public class SearchService {
 					ON sp.user_id = u.id
 					AND sp.visibility = 'PUBLIC'
 					AND sp.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
 				WHERE u.status = 'ACTIVE'
 					AND LOWER(u.nickname) LIKE LOWER(?)
 				GROUP BY u.id, u.nickname
