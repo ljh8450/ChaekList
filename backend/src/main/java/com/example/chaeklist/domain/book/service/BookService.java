@@ -491,6 +491,17 @@ public class BookService {
 	}
 
 	private void saveRecommendation(long userId, PersonalizedRecommendation recommendation) {
+		int updated = jdbcTemplate.update("""
+				UPDATE recommendations
+				SET reason = ?,
+					score = ?
+				WHERE user_id = ?
+					AND book_id = ?
+					AND recommendation_type = 'CONTENT_BASED'
+				""", recommendation.reason(), recommendation.score(), userId, recommendation.book().numericId());
+		if (updated > 0) {
+			return;
+		}
 		jdbcTemplate.update("""
 				INSERT INTO recommendations (user_id, book_id, recommendation_type, reason, score, created_at)
 				VALUES (?, ?, 'CONTENT_BASED', ?, ?, CURRENT_TIMESTAMP)

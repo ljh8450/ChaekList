@@ -56,7 +56,7 @@ function clampPercent(value) {
   return Math.min(100, Math.max(0, numericValue));
 }
 
-function ReadingGrowthCard({ growth, isLoading }) {
+function ReadingGrowthCard({ growth, isLoading, onShare, shareStatus }) {
   if (isLoading) {
     return null;
   }
@@ -100,7 +100,15 @@ function ReadingGrowthCard({ growth, isLoading }) {
             {growth.summary ?? primaryBadge.description}
           </p>
         </div>
+        <button
+          className="inline-flex shrink-0 justify-center rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#27384a]"
+          type="button"
+          onClick={onShare}
+        >
+          공유하기
+        </button>
       </div>
+      {shareStatus ? <p className="mt-3 text-sm font-semibold text-[#4CAF50]">{shareStatus}</p> : null}
 
       {badges.length > 0 ? (
         <div className="mt-5">
@@ -222,6 +230,7 @@ export default function MyPage() {
   const [myPage, setMyPage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [shareStatus, setShareStatus] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -331,6 +340,36 @@ export default function MyPage() {
     await reloadMyPage();
   }
 
+  async function shareReadingGrowth() {
+    if (!readingGrowth) {
+      return;
+    }
+    const confirmed = window.confirm("독서 성장 카드를 공개 피드에 공유할까요? 읽은 책 목록 전체는 공개되지 않습니다.");
+    if (!confirmed) {
+      return;
+    }
+    const primaryBadge = readingGrowth.primaryBadge?.label ?? "독서 성장";
+    const summary = readingGrowth.summary ?? readingGrowth.primaryBadge?.description ?? "독서 성장 카드를 공유했습니다.";
+    const response = await fetch("/api/social/posts", {
+      body: JSON.stringify({
+        postType: "READING_GROWTH",
+        content: `${primaryBadge}\n${summary}`,
+        visibility: "PUBLIC",
+        idempotencyKey: `reading-growth-${Date.now()}`,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    if (!response.ok) {
+      setShareStatus("공유하지 못했습니다.");
+      return;
+    }
+    setShareStatus("공개 피드에 공유했습니다.");
+  }
+
   return (
     <section className="mx-auto w-full max-w-7xl px-5 py-8">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
@@ -354,7 +393,7 @@ export default function MyPage() {
             </div>
           ) : null}
 
-          <ReadingGrowthCard growth={readingGrowth} isLoading={isLoading} />
+          <ReadingGrowthCard growth={readingGrowth} isLoading={isLoading} onShare={shareReadingGrowth} shareStatus={shareStatus} />
 
           <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

@@ -56,7 +56,18 @@ public class MyPageService {
 	}
 
 	public Badge getPrimaryReadingGrowthBadge(AuthenticatedUser user) {
-		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(user.id())));
+		return getPrimaryReadingGrowthBadge(user.id());
+	}
+
+	public Badge getPrimaryReadingGrowthBadge(long userId) {
+		return selectPrimaryBadge(getReadingGrowthBadges(getReadingGrowthBadgeMetrics(userId)));
+	}
+
+	public Badge getPublicPrimaryReadingGrowthBadge(long userId) {
+		if (!isBadgesPublic(userId)) {
+			return null;
+		}
+		return getPrimaryReadingGrowthBadge(userId);
 	}
 
 	public OnboardingStatusResponse getOnboardingStatus(AuthenticatedUser user) {
@@ -531,7 +542,8 @@ public class MyPageService {
 				+ metrics.categoryDiversityCount() * 15
 				+ metrics.purposeMatchReadCount() * 10
 				+ metrics.recommendationSavedCount() * 5
-				+ metrics.recommendationReadCount() * 15;
+				+ metrics.recommendationReadCount() * 15
+				+ metrics.socialActivityScore();
 
 		List<Badge> badges = getReadingGrowthBadges(metrics);
 		Badge primaryBadge = selectPrimaryBadge(badges);
@@ -561,6 +573,7 @@ public class MyPageService {
 		int recommendationReadCount = countRecommendationConversions(userId, "READ");
 		int recommendationConversionCount = countRecommendationConversions(userId);
 		int purposeMatchReadCount = countPurposeMatchReadBooks(userId);
+		int socialActivityScore = countSocialActivityScore(userId);
 		String topCategory = getTopReadCategory(userId).orElse(null);
 
 		return new ReadingGrowthMetrics(
@@ -572,6 +585,7 @@ public class MyPageService {
 				recommendationReadCount,
 				recommendationConversionCount,
 				purposeMatchReadCount,
+				socialActivityScore,
 				topCategory
 		);
 	}
@@ -586,8 +600,37 @@ public class MyPageService {
 				0,
 				countRecommendationConversions(userId),
 				countPurposeMatchReadBooks(userId),
+				0,
 				null
 		);
+	}
+
+	private int countSocialActivityScore(long userId) {
+		Integer postCount = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_posts sp
+				WHERE sp.user_id = ?
+					AND sp.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
+				""", Integer.class, userId);
+		Integer receivedLikeCount = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_post_likes likes
+				JOIN social_posts sp ON sp.id = likes.post_id
+				WHERE sp.user_id = ?
+					AND sp.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
+				""", Integer.class, userId);
+		return Math.min(nullToZero(postCount), 5) * 2
+				+ Math.min(nullToZero(receivedLikeCount), 5);
 	}
 
 	private int countMonthlyReadBooks(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
@@ -886,6 +929,10 @@ public class MyPageService {
 		return (int) Math.round(Math.min(score, 100));
 	}
 
+	private int nullToZero(Integer value) {
+		return value == null ? 0 : value;
+	}
+
 	private String formatCount(int count) {
 		if (count >= 1000) {
 			return "%.1fk".formatted(count / 1000.0);
@@ -898,6 +945,16 @@ public class MyPageService {
 		return timestamp == null ? null : timestamp.toLocalDateTime();
 	}
 
+	private boolean isBadgesPublic(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM user_privacy_settings
+				WHERE user_id = ?
+					AND badges_visibility = 'PUBLIC'
+				""", Integer.class, userId);
+		return count != null && count > 0;
+	}
+
 	private record ReadingGrowthMetrics(
 			int monthlyReadCount,
 			int totalReadCount,
@@ -907,6 +964,7 @@ public class MyPageService {
 			int recommendationReadCount,
 			int recommendationConversionCount,
 			int purposeMatchReadCount,
+			int socialActivityScore,
 			String topCategory
 	) {
 	}

@@ -1,15 +1,28 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "../App";
 
 const navItems = [
   { label: "홈", to: "/" },
   { label: "랭킹", to: "/rankings" },
   { label: "카테고리", to: "/categories" },
+  { label: "피드", to: "/social" },
 ];
 
 export default function Header() {
   const { currentUser, logout, primaryBadge } = useAuth();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
   const primaryBadgeLabel = primaryBadge?.label ?? "";
+
+  function submitSearch(event) {
+    event.preventDefault();
+    const nextQuery = query.trim();
+    if (nextQuery.length < 2) {
+      return;
+    }
+    navigate(`/search?query=${encodeURIComponent(nextQuery)}&type=all`);
+  }
 
   return (
     <header className="sticky top-0 z-10 border-b border-[#E5E7EB] bg-white/95 backdrop-blur">
@@ -37,16 +50,18 @@ export default function Header() {
           </nav>
         </div>
 
-        <div className="flex justify-center">
+        <form className="flex justify-center" onSubmit={submitSearch}>
           <label className="relative block w-full min-w-0 max-w-md">
             <span className="sr-only">책 검색</span>
             <input
               className="w-full rounded-md border border-[#E5E7EB] bg-[#F5F3EF] px-3 py-2 text-sm outline-none transition placeholder:text-[#6B7280] focus:border-[#1E2A38] focus:bg-white focus:ring-2 focus:ring-[#1E2A38]/10"
-              placeholder="책 제목, 저자, 키워드 검색"
+              placeholder="책, 저자, 키워드, 공개 기록 검색"
               type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-        </div>
+        </form>
 
         <div className="flex items-center gap-2 lg:justify-end">
             {currentUser ? (
@@ -58,6 +73,9 @@ export default function Header() {
                 ) : null}
                 <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/mypage">
                   {currentUser.nickname}
+                </Link>
+                <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/settings">
+                  설정
                 </Link>
                 <button
                   className="rounded-md bg-[#1E2A38] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#27384a]"

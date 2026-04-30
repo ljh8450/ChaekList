@@ -8,8 +8,12 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyPage from "./pages/MyPage";
 import OnboardingPage from "./pages/OnboardingPage";
+import PublicProfilePage from "./pages/PublicProfilePage";
 import RankingsPage from "./pages/RankingsPage";
+import SearchResultsPage from "./pages/SearchResultsPage";
+import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
+import SocialFeedPage from "./pages/SocialFeedPage";
 
 const AUTH_STORAGE_KEY = "chaeklist.auth";
 
@@ -82,6 +86,9 @@ function AppRoutes() {
           <Route element={<RankingsPage />} path="/rankings" />
           <Route element={<CategoriesPage />} path="/categories" />
           <Route element={<BookDetailPage />} path="/books/:bookId" />
+          <Route element={<SocialFeedPage />} path="/social" />
+          <Route element={<SearchResultsPage />} path="/search" />
+          <Route element={<PublicProfilePage />} path="/users/:userId" />
           <Route
             element={
               <RequireAuth>
@@ -97,6 +104,14 @@ function AppRoutes() {
               </RequireAuth>
             }
             path="/mypage"
+          />
+          <Route
+            element={
+              <RequireAuth>
+                <SettingsPage />
+              </RequireAuth>
+            }
+            path="/settings"
           />
           <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
