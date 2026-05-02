@@ -11,14 +11,31 @@
 - Do not refactor unrelated code.
 - Prefer updating existing code over creating new abstractions.
 - Keep explanations short and concrete.
+- State assumptions explicitly before implementation when they affect the approach.
+- If requirements are unclear or have multiple interpretations, ask before changing code.
+- Surface tradeoffs and push back when a simpler or safer approach exists.
+
+## Simplicity rules
+- Implement only what was requested.
+- Do not add speculative features, configurability, or abstractions.
+- Avoid single-use abstractions unless they clearly reduce complexity.
+- Do not add error handling for scenarios that cannot happen in the current design.
+- If a solution becomes noticeably larger than necessary, simplify before finishing.
+
+## Change discipline
+- Touch only lines that directly support the user's request.
+- Do not improve adjacent code, comments, formatting, or dead code unless asked.
+- Match existing style even when another style is preferred.
+- If unrelated dead code or cleanup is noticed, mention it instead of deleting it.
+- Remove only imports, variables, functions, or files made unused by your own changes.
 
 ## Scope rules
-- Frontend-only tasks should stay inside `frontend/` unless clearly required.
-- Backend-only tasks should stay inside `backend/` unless clearly required.
+- Frontend-only tasks must stay inside `frontend/`.
+- Backend-only tasks must stay inside `backend/`.
 - Documentation-focused tasks should use the docs role and stay inside `docs/`, `README.md`, `AGENTS.md`, or `.skills/` unless clearly required.
 - Before creating a new documentation file, report the proposed path, purpose, and outline, then wait for approval.
 - Planner role plan documents under `docs/plan/yyyy-mm-dd/` do not require this new-document approval step.
-- Ask before changing database schema, environment variables, package dependencies, CI, or deployment files.
+- Ask before changing database schema, environment variables (`.env`), package dependencies, CI/CD settings, or deployment settings.
 
 ## Role rules
 - Use the planner role when the user asks for a plan, when work is large or ambiguous, or when a task may touch multiple areas.
@@ -41,6 +58,16 @@
 - For tasks touching both frontend and backend, first propose a short plan.
 - For large tasks, break work into small sequential steps.
 - Avoid broad rewrites unless explicitly requested.
+
+## Execution rules
+- Define success criteria before implementation when the task is non-trivial.
+- For bug fixes, prefer reproducing the bug with a focused test or check before changing code.
+- For validation work, make the verification command or check explicit.
+- For multi-step tasks, state a brief plan in this format:
+  1. `[Step]` -> verify: `[check]`
+  2. `[Step]` -> verify: `[check]`
+  3. `[Step]` -> verify: `[check]`
+- Continue iterating until the stated verification passes or the blocker is clearly explained.
 
 ## Language
 - All responses must be written in Korean.
