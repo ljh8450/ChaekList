@@ -5,8 +5,10 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -175,6 +178,44 @@ class SocialControllerTest {
 
 	@Test
 	@Transactional
+	void uploadsPostMediaAndReturnsItFromFeed() throws Exception {
+		createSocialTables();
+		String accessToken = loginAndExtractAccessToken();
+		long postId = insertPublicTextPost(userId(), "이미지를 붙일 공개 기록");
+		MockMultipartFile file = new MockMultipartFile(
+				"file",
+				"note.png",
+				"image/png",
+				new byte[] { 1, 2, 3 }
+		);
+
+		String uploadBody = mockMvc.perform(multipart("/api/social/posts/{postId}/media", postId)
+						.file(file)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.postId", is((int) postId)))
+				.andExpect(jsonPath("$.fileName", is("note.png")))
+				.andExpect(jsonPath("$.contentType", is("image/png")))
+				.andExpect(jsonPath("$.sizeBytes", is(3)))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long mediaId = objectMapper.readTree(uploadBody).get("id").asLong();
+		mockMvc.perform(get("/api/social/posts/{postId}/media/{mediaId}", postId, mediaId))
+				.andExpect(status().isOk())
+				.andExpect(content().contentType("image/png"))
+				.andExpect(content().bytes(new byte[] { 1, 2, 3 }));
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].media", hasSize(1)))
+				.andExpect(jsonPath("$[0].media[0].id", is((int) mediaId)))
+				.andExpect(jsonPath("$[0].media[0].url", is("/api/social/posts/" + postId + "/media/" + mediaId)));
+	}
+
+	@Test
+	@Transactional
 	void adminReviewsReportsAndTogglesHiddenPost() throws Exception {
 		createSocialTables();
 		String reporterAccessToken = loginAndExtractAccessToken();
@@ -248,6 +289,67 @@ class SocialControllerTest {
 		mockMvc.perform(get("/api/social/feed"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(1)));
+	}
+
+	@Test
+	@Transactional
+	void adminAddsReportMemoNicknameActionAndCreatesServiceNotification() throws Exception {
+		createSocialTables();
+		String reporterAccessToken = loginAndExtractAccessToken();
+		String adminAccessToken = insertAdminAndExtractAccessToken("notice-admin@chaeklist.kr", "notice-admin");
+		long reportedUserId = insertUser("reported@chaeklist.kr", "bad-nickname");
+
+		String reportBody = mockMvc.perform(post("/api/users/{userId}/reports", reportedUserId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + reporterAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "reason": "INAPPROPRIATE_NICKNAME",
+								  "detail": "닉네임이 부적절합니다."
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long reportId = objectMapper.readTree(reportBody).get("id").asLong();
+		mockMvc.perform(patch("/api/admin/social/reports/{reportId}", reportId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "status": "REVIEWED",
+								  "memo": "닉네임 변경 요청 대상",
+								  "nicknameAction": "REQUIRE_CHANGE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("REVIEWED")));
+
+		mockMvc.perform(get("/api/admin/social/reports/{reportId}/events", reportId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].eventType", is("STATUS_CHANGED")))
+				.andExpect(jsonPath("$[0].memo", is("닉네임 변경 요청 대상")))
+				.andExpect(jsonPath("$[1].eventType", is("NICKNAME_REQUIRE_CHANGE")));
+
+		mockMvc.perform(post("/api/admin/notifications/service")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "audience": "USER",
+								  "userId": %d,
+								  "title": "서비스 공지",
+								  "message": "닉네임 정책을 확인해주세요."
+								}
+								""".formatted(reportedUserId)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.audience", is("USER")))
+				.andExpect(jsonPath("$.userId", is((int) reportedUserId)))
+				.andExpect(jsonPath("$.deliveredCount", is(1)));
 	}
 
 	@Test
@@ -744,6 +846,19 @@ class SocialControllerTest {
 				)
 				""");
 		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS social_post_media (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					post_id BIGINT NOT NULL,
+					uploader_user_id BIGINT NOT NULL,
+					file_name VARCHAR(255),
+					content_type VARCHAR(100) NOT NULL,
+					size_bytes BIGINT NOT NULL,
+					data BLOB NOT NULL,
+					sort_order INT NOT NULL DEFAULT 0,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
 				CREATE TABLE IF NOT EXISTS user_blocks (
 					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
 					blocker_user_id BIGINT NOT NULL,
@@ -772,6 +887,18 @@ class SocialControllerTest {
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					CONSTRAINT uk_social_reports_reporter_target UNIQUE (reporter_user_id, target_type, target_id)
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS social_report_events (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					report_id BIGINT NOT NULL,
+					admin_user_id BIGINT NOT NULL,
+					event_type VARCHAR(40) NOT NULL,
+					from_status VARCHAR(30),
+					to_status VARCHAR(30),
+					memo VARCHAR(1000),
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
 		jdbcTemplate.execute("""
@@ -806,6 +933,17 @@ class SocialControllerTest {
 					title VARCHAR(100) NOT NULL,
 					message VARCHAR(255) NOT NULL,
 					read_at DATETIME(6),
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS service_notices (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					created_by_user_id BIGINT NOT NULL,
+					audience VARCHAR(20) NOT NULL,
+					target_user_id BIGINT,
+					title VARCHAR(100) NOT NULL,
+					message VARCHAR(255) NOT NULL,
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");

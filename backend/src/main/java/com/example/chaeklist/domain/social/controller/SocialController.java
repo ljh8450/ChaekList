@@ -5,8 +5,11 @@ import java.util.Map;
 
 import com.example.chaeklist.domain.auth.util.TokenService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminPostHideRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportEventResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportStatusRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminServiceNotificationRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminServiceNotificationResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationResponse;
@@ -18,6 +21,8 @@ import com.example.chaeklist.domain.social.dto.SocialDtos.PublicProfileResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.ReportRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.ReportResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SettingsResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostMediaContent;
+import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostMediaResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostUpdateRequest;
@@ -30,7 +35,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -41,7 +48,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @Tag(name = "Social", description = "공개 피드, 공유 게시글, 좋아요, 공개 프로필, 설정 API")
@@ -122,6 +131,32 @@ public class SocialController {
 	) {
 		socialService.deletePost(authenticate(authorizationHeader), postId);
 		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping(value = "/api/social/posts/{postId}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "게시글 이미지 첨부", description = "작성자 본인의 활성 TEXT 게시글에 이미지 파일을 첨부합니다.")
+	public SocialPostMediaResponse uploadPostMedia(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long postId,
+			@RequestPart("file") MultipartFile file
+	) {
+		return socialService.uploadPostMedia(authenticate(authorizationHeader), postId, file);
+	}
+
+	@GetMapping("/api/social/posts/{postId}/media/{mediaId}")
+	@Operation(summary = "게시글 이미지 조회", description = "공개 게시글 이미지는 공개 조회하고, 비공개 게시글 이미지는 작성자만 조회합니다.")
+	public ResponseEntity<byte[]> postMedia(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long postId,
+			@PathVariable long mediaId
+	) {
+		SocialPostMediaContent media = socialService.getPostMedia(optionalAuthenticate(authorizationHeader).orElse(null), postId, mediaId);
+		String fileName = media.fileName() == null ? "media" : media.fileName().replace("\"", "");
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(media.contentType()))
+				.header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+				.body(media.data());
 	}
 
 	@PostMapping("/api/social/posts/{postId}/likes")
@@ -301,6 +336,16 @@ public class SocialController {
 		return socialService.updateAdminReport(authenticate(authorizationHeader), reportId, request);
 	}
 
+	@GetMapping("/api/admin/social/reports/{reportId}/events")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 신고 처리 이력 조회", description = "신고 상태 변경, 운영자 메모, 닉네임 신고 처리 이력을 조회합니다.")
+	public List<AdminReportEventResponse> adminReportEvents(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long reportId
+	) {
+		return socialService.getAdminReportEvents(authenticate(authorizationHeader), reportId);
+	}
+
 	@PostMapping("/api/admin/social/posts/{postId}/hide")
 	@SecurityRequirement(name = "bearerAuth")
 	@Operation(summary = "관리자 게시글 숨김", description = "공개 영역에서 게시글을 관리자 숨김 처리합니다.")
@@ -320,6 +365,16 @@ public class SocialController {
 			@PathVariable long postId
 	) {
 		return socialService.unhidePostByAdmin(authenticate(authorizationHeader), postId);
+	}
+
+	@PostMapping("/api/admin/notifications/service")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 서비스 공지 알림 생성", description = "전체 활성 사용자 또는 특정 사용자에게 SERVICE 알림을 생성합니다.")
+	public AdminServiceNotificationResponse createServiceNotification(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestBody AdminServiceNotificationRequest request
+	) {
+		return socialService.createServiceNotification(authenticate(authorizationHeader), request);
 	}
 
 	private AuthenticatedUser authenticate(String authorizationHeader) {

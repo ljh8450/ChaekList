@@ -41,8 +41,13 @@ public final class SocialDtos {
 			boolean mine,
 			LocalDateTime createdAt,
 			LocalDateTime updatedAt,
-			Badge primaryBadge
+			Badge primaryBadge,
+			List<SocialPostMediaResponse> media
 	) {
+		public SocialPostResponse {
+			media = media == null ? List.of() : List.copyOf(media);
+		}
+
 		public SocialPostResponse(
 				long id,
 				Long userId,
@@ -59,12 +64,32 @@ public final class SocialDtos {
 				LocalDateTime createdAt,
 				LocalDateTime updatedAt
 		) {
-			this(id, userId, nickname, authorAnonymized, postType, visibility, status, book, content, likeCount, likedByMe, mine, createdAt, updatedAt, null);
+			this(id, userId, nickname, authorAnonymized, postType, visibility, status, book, content, likeCount, likedByMe, mine, createdAt, updatedAt, null, List.of());
 		}
 
 		public SocialPostResponse withPrimaryBadge(Badge badge) {
-			return new SocialPostResponse(id, userId, nickname, authorAnonymized, postType, visibility, status, book, content, likeCount, likedByMe, mine, createdAt, updatedAt, badge);
+			return new SocialPostResponse(id, userId, nickname, authorAnonymized, postType, visibility, status, book, content, likeCount, likedByMe, mine, createdAt, updatedAt, badge, media);
 		}
+	}
+
+	public record SocialPostMediaResponse(
+			long id,
+			long postId,
+			String fileName,
+			String contentType,
+			long sizeBytes,
+			int sortOrder,
+			String url,
+			LocalDateTime createdAt
+	) {
+	}
+
+	public record SocialPostMediaContent(
+			String fileName,
+			String contentType,
+			long sizeBytes,
+			byte[] data
+	) {
 	}
 
 	public record BookSummary(
@@ -186,12 +211,46 @@ public final class SocialDtos {
 	}
 
 	public record AdminReportStatusRequest(
-			String status
+			String status,
+			String memo,
+			String nicknameAction
+	) {
+	}
+
+	public record AdminReportEventResponse(
+			long id,
+			long reportId,
+			long adminUserId,
+			String adminNickname,
+			String eventType,
+			String fromStatus,
+			String toStatus,
+			String memo,
+			LocalDateTime createdAt
 	) {
 	}
 
 	public record AdminPostHideRequest(
 			String reason
+	) {
+	}
+
+	public record AdminServiceNotificationRequest(
+			String audience,
+			Long userId,
+			String title,
+			String message
+	) {
+	}
+
+	public record AdminServiceNotificationResponse(
+			long id,
+			String audience,
+			Long userId,
+			String title,
+			String message,
+			int deliveredCount,
+			LocalDateTime createdAt
 	) {
 	}
 

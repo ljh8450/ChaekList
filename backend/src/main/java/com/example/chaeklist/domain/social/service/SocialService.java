@@ -11,8 +11,11 @@ import java.util.Set;
 import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
 import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminPostHideRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportEventResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportStatusRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminServiceNotificationRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminServiceNotificationResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BookSummary;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
@@ -25,6 +28,8 @@ import com.example.chaeklist.domain.social.dto.SocialDtos.PublicProfileResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.ReportRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.ReportResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SettingsResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostMediaContent;
+import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostMediaResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.SocialPostUpdateRequest;
@@ -36,6 +41,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class SocialService {
@@ -48,6 +54,12 @@ public class SocialService {
 	private static final Set<String> REPORT_REASONS = Set.of("SPAM", "ABUSE", "INAPPROPRIATE_NICKNAME", "INAPPROPRIATE_CONTENT", "OTHER");
 	private static final Set<String> FEED_SORTS = Set.of("LATEST", "LIKES");
 	private static final Set<String> REPORT_STATUSES = Set.of("PENDING", "REVIEWED", "REJECTED");
+	private static final Set<String> REPORT_NICKNAME_ACTIONS = Set.of("REQUIRE_CHANGE", "DISMISS");
+	private static final Set<String> SERVICE_NOTIFICATION_AUDIENCES = Set.of("ALL", "USER");
+	private static final int MAX_DAILY_REPORTS_PER_USER = 20;
+	private static final Set<String> MEDIA_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+	private static final int MAX_MEDIA_PER_POST = 3;
+	private static final long MAX_MEDIA_SIZE_BYTES = 2 * 1024 * 1024;
 
 	private final JdbcTemplate jdbcTemplate;
 	private final MyPageService myPageService;
@@ -511,6 +523,7 @@ public class SocialService {
 		String reason = normalizeReportReason(request == null ? null : request.reason());
 		String detail = truncate(normalizeBlankToNull(request == null ? null : request.detail()), 500);
 		validateReportTarget(targetType, targetId);
+		validateReportDailyLimit(user.id());
 		try {
 			KeyHolder keyHolder = new GeneratedKeyHolder();
 			jdbcTemplate.update(connection -> {
@@ -603,8 +616,13 @@ public class SocialService {
 	public AdminReportResponse updateAdminReport(AuthenticatedUser user, long reportId, AdminReportStatusRequest request) {
 		requireAdmin(user);
 		String status = normalizeReportStatus(request == null ? null : request.status());
+		String memo = truncate(normalizeBlankToNull(request == null ? null : request.memo()), 1000);
+		String nicknameAction = normalizeOptionalNicknameAction(request == null ? null : request.nicknameAction());
 		ReportStatusNotificationTarget notificationTarget = findReportStatusNotificationTarget(reportId)
 				.orElseThrow(() -> new SocialNotFoundException("Report not found."));
+		if (nicknameAction != null) {
+			validateNicknameReport(reportId);
+		}
 		int updated = jdbcTemplate.update("""
 				UPDATE social_reports
 				SET status = ?,
@@ -615,9 +633,41 @@ public class SocialService {
 			throw new SocialNotFoundException("Report not found.");
 		}
 		if (!notificationTarget.status().equals(status)) {
+			createReportEvent(reportId, user.id(), "STATUS_CHANGED", notificationTarget.status(), status, memo);
+		} else if (memo != null) {
+			createReportEvent(reportId, user.id(), "MEMO_ADDED", status, status, memo);
+		}
+		if (nicknameAction != null) {
+			createReportEvent(reportId, user.id(), "NICKNAME_" + nicknameAction, status, status, memo);
+		}
+		if (!notificationTarget.status().equals(status)) {
 			createReportStatusNotification(reportId, notificationTarget.reporterUserId(), status);
 		}
 		return getAdminReportById(reportId);
+	}
+
+	public List<AdminReportEventResponse> getAdminReportEvents(AuthenticatedUser user, long reportId) {
+		requireAdmin(user);
+		validateReportExists(reportId);
+		return jdbcTemplate.query("""
+				SELECT
+					event.id,
+					event.report_id,
+					event.admin_user_id,
+					admin.nickname AS admin_nickname,
+					event.event_type,
+					event.from_status,
+					event.to_status,
+					event.memo,
+					event.created_at
+				FROM social_report_events event
+				JOIN users admin ON admin.id = event.admin_user_id
+				WHERE event.report_id = ?
+				ORDER BY event.created_at ASC, event.id ASC
+				""",
+				this::mapReportEvent,
+				reportId
+		);
 	}
 
 	@Transactional
@@ -646,10 +696,154 @@ public class SocialService {
 		return getPostForAdmin(postId);
 	}
 
+	@Transactional
+	public AdminServiceNotificationResponse createServiceNotification(AuthenticatedUser user, AdminServiceNotificationRequest request) {
+		requireAdmin(user);
+		String audience = normalizeServiceNotificationAudience(request == null ? null : request.audience());
+		Long targetUserId = request == null ? null : request.userId();
+		String title = truncate(normalizeBlankToNull(request == null ? null : request.title()), 100);
+		String message = truncate(normalizeBlankToNull(request == null ? null : request.message()), 255);
+		if (title == null) {
+			throw new SocialRequestException("Notification title is required.");
+		}
+		if (message == null) {
+			throw new SocialRequestException("Notification message is required.");
+		}
+		if ("USER".equals(audience)) {
+			if (targetUserId == null || targetUserId <= 0) {
+				throw new SocialRequestException("User id is required.");
+			}
+			validateActiveUser(targetUserId);
+		} else {
+			targetUserId = null;
+		}
+		KeyHolder keyHolder = new GeneratedKeyHolder();
+		Long finalTargetUserId = targetUserId;
+		jdbcTemplate.update(connection -> {
+			java.sql.PreparedStatement statement = connection.prepareStatement("""
+					INSERT INTO service_notices (
+						created_by_user_id, audience, target_user_id, title, message, created_at
+					)
+					VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+					""", java.sql.Statement.RETURN_GENERATED_KEYS);
+			statement.setLong(1, user.id());
+			statement.setString(2, audience);
+			setNullableLong(statement, 3, finalTargetUserId);
+			statement.setString(4, title);
+			statement.setString(5, message);
+			return statement;
+		}, keyHolder);
+		Number key = generatedId(keyHolder);
+		if (key == null) {
+			throw new SocialRequestException("Service notification creation failed.");
+		}
+		int deliveredCount = createServiceNotificationDeliveries(key.longValue(), audience, targetUserId, title, message);
+		return getServiceNotificationResponse(key.longValue(), deliveredCount);
+	}
+
 	private void requireAdmin(AuthenticatedUser user) {
 		if (user == null || !"ADMIN".equals(user.role())) {
 			throw new SocialForbiddenException("Admin access is required.");
 		}
+	}
+
+	private void createReportEvent(long reportId, long adminUserId, String eventType, String fromStatus, String toStatus, String memo) {
+		jdbcTemplate.update("""
+				INSERT INTO social_report_events (
+					report_id, admin_user_id, event_type, from_status, to_status, memo, created_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+				""", reportId, adminUserId, eventType, fromStatus, toStatus, memo);
+	}
+
+	private AdminReportEventResponse mapReportEvent(ResultSet resultSet, int rowNumber) throws SQLException {
+		return new AdminReportEventResponse(
+				resultSet.getLong("id"),
+				resultSet.getLong("report_id"),
+				resultSet.getLong("admin_user_id"),
+				resultSet.getString("admin_nickname"),
+				resultSet.getString("event_type"),
+				resultSet.getString("from_status"),
+				resultSet.getString("to_status"),
+				resultSet.getString("memo"),
+				readLocalDateTime(resultSet, "created_at")
+		);
+	}
+
+	private void validateReportExists(long reportId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_reports
+				WHERE id = ?
+				""", Integer.class, reportId);
+		if (count == null || count == 0) {
+			throw new SocialNotFoundException("Report not found.");
+		}
+	}
+
+	private void validateNicknameReport(long reportId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_reports
+				WHERE id = ?
+					AND target_type = 'USER_NICKNAME'
+				""", Integer.class, reportId);
+		if (count == null || count == 0) {
+			throw new SocialRequestException("Nickname action is only available for nickname reports.");
+		}
+	}
+
+	private int createServiceNotificationDeliveries(long noticeId, String audience, Long targetUserId, String title, String message) {
+		if ("USER".equals(audience)) {
+			ensureNotificationSettings(targetUserId);
+			if (!isServiceNotificationEnabled(targetUserId)) {
+				return 0;
+			}
+			return jdbcTemplate.update("""
+					INSERT INTO user_notifications (
+						user_id, notification_type, target_type, target_id, title, message, created_at
+					)
+					VALUES (?, 'SERVICE', 'SERVICE', ?, ?, ?, CURRENT_TIMESTAMP(6))
+					""", targetUserId, noticeId, title, message);
+		}
+		jdbcTemplate.update("""
+				INSERT IGNORE INTO user_notification_settings (
+					user_id, like_notifications_enabled, report_status_notifications_enabled,
+					service_notifications_enabled, created_at, updated_at
+				)
+				SELECT id, TRUE, TRUE, TRUE, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)
+				FROM users
+				WHERE status = 'ACTIVE'
+				""");
+		return jdbcTemplate.update("""
+				INSERT INTO user_notifications (
+					user_id, notification_type, target_type, target_id, title, message, created_at
+				)
+				SELECT u.id, 'SERVICE', 'SERVICE', ?, ?, ?, CURRENT_TIMESTAMP(6)
+				FROM users u
+				JOIN user_notification_settings settings ON settings.user_id = u.id
+				WHERE u.status = 'ACTIVE'
+					AND settings.service_notifications_enabled = TRUE
+				""", noticeId, title, message);
+	}
+
+	private AdminServiceNotificationResponse getServiceNotificationResponse(long noticeId, int deliveredCount) {
+		return jdbcTemplate.queryForObject("""
+				SELECT id, audience, target_user_id, title, message, created_at
+				FROM service_notices
+				WHERE id = ?
+				""",
+				(resultSet, rowNumber) -> new AdminServiceNotificationResponse(
+						resultSet.getLong("id"),
+						resultSet.getString("audience"),
+						getNullableLong(resultSet, "target_user_id"),
+						resultSet.getString("title"),
+						resultSet.getString("message"),
+						deliveredCount,
+						readLocalDateTime(resultSet, "created_at")
+				),
+				noticeId
+		);
 	}
 
 	private AdminReportResponse getAdminReportById(long reportId) {
@@ -703,6 +897,83 @@ public class SocialService {
 		if (count == null || count == 0) {
 			throw new SocialNotFoundException("Post not found.");
 		}
+	}
+
+	@Transactional
+	public SocialPostMediaResponse uploadPostMedia(AuthenticatedUser user, long postId, MultipartFile file) {
+		validateMediaOwnerPost(user.id(), postId);
+		validateMediaFile(file);
+		int mediaCount = countPostMedia(postId);
+		if (mediaCount >= MAX_MEDIA_PER_POST) {
+			throw new SocialRequestException("Media attachment limit exceeded.");
+		}
+		byte[] data;
+		try {
+			data = file.getBytes();
+		} catch (java.io.IOException exception) {
+			throw new SocialRequestException("Media file could not be read.");
+		}
+		String contentType = file.getContentType().toLowerCase(Locale.ROOT);
+		String fileName = truncate(normalizeBlankToNull(file.getOriginalFilename()), 255);
+		int sortOrder = mediaCount + 1;
+		KeyHolder keyHolder = new GeneratedKeyHolder();
+		jdbcTemplate.update(connection -> {
+			java.sql.PreparedStatement statement = connection.prepareStatement("""
+					INSERT INTO social_post_media (
+						post_id, uploader_user_id, file_name, content_type, size_bytes, data, sort_order, created_at
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+					""", java.sql.Statement.RETURN_GENERATED_KEYS);
+			statement.setLong(1, postId);
+			statement.setLong(2, user.id());
+			statement.setString(3, fileName);
+			statement.setString(4, contentType);
+			statement.setLong(5, data.length);
+			statement.setBytes(6, data);
+			statement.setInt(7, sortOrder);
+			return statement;
+		}, keyHolder);
+		Number key = generatedId(keyHolder);
+		if (key == null) {
+			throw new SocialRequestException("Media upload failed.");
+		}
+		return getPostMediaResponse(postId, key.longValue());
+	}
+
+	public SocialPostMediaContent getPostMedia(AuthenticatedUser user, long postId, long mediaId) {
+		Long userId = nullableUserId(user);
+		return jdbcTemplate.queryForObject("""
+				SELECT m.file_name, m.content_type, m.size_bytes, m.data
+				FROM social_post_media m
+				JOIN social_posts sp ON sp.id = m.post_id
+				LEFT JOIN users u ON u.id = sp.user_id
+				WHERE m.id = ?
+					AND m.post_id = ?
+					AND sp.status = 'ACTIVE'
+					AND (
+						(? IS NOT NULL AND sp.user_id = ?)
+						OR (
+							sp.visibility = 'PUBLIC'
+							AND (sp.user_id IS NULL OR u.status = 'ACTIVE')
+							AND NOT EXISTS (
+								SELECT 1
+								FROM social_admin_hidden_posts hidden
+								WHERE hidden.post_id = sp.id
+							)
+						)
+					)
+				""",
+				(resultSet, rowNumber) -> new SocialPostMediaContent(
+						resultSet.getString("file_name"),
+						resultSet.getString("content_type"),
+						resultSet.getLong("size_bytes"),
+						resultSet.getBytes("data")
+				),
+				mediaId,
+				postId,
+				userId,
+				userId
+		);
 	}
 
 	private SocialPostResponse getPostForAdmin(long postId) {
@@ -847,6 +1118,42 @@ public class SocialService {
 		}
 	}
 
+	private void validateMediaOwnerPost(long userId, long postId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_posts
+				WHERE id = ?
+					AND user_id = ?
+					AND post_type = 'TEXT'
+					AND status = 'ACTIVE'
+				""", Integer.class, postId, userId);
+		if (count == null || count == 0) {
+			throw new SocialNotFoundException("Post not found.");
+		}
+	}
+
+	private void validateMediaFile(MultipartFile file) {
+		if (file == null || file.isEmpty()) {
+			throw new SocialRequestException("Media file is required.");
+		}
+		if (file.getSize() > MAX_MEDIA_SIZE_BYTES) {
+			throw new SocialRequestException("Media file is too large.");
+		}
+		String contentType = file.getContentType();
+		if (contentType == null || !MEDIA_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+			throw new SocialRequestException("Unsupported media content type.");
+		}
+	}
+
+	private int countPostMedia(long postId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_post_media
+				WHERE post_id = ?
+				""", Integer.class, postId);
+		return count == null ? 0 : count;
+	}
+
 	private void validatePublicActivePost(long postId) {
 		Integer count = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
@@ -868,6 +1175,18 @@ public class SocialService {
 			return;
 		}
 		validateActiveUser(targetId);
+	}
+
+	private void validateReportDailyLimit(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_reports
+				WHERE reporter_user_id = ?
+					AND created_at >= CURRENT_DATE
+				""", Integer.class, userId);
+		if (count != null && count >= MAX_DAILY_REPORTS_PER_USER) {
+			throw new SocialRequestException("Daily report limit exceeded.");
+		}
 	}
 
 	private void validateActiveUser(long userId) {
@@ -1017,6 +1336,16 @@ public class SocialService {
 		return Boolean.TRUE.equals(enabled);
 	}
 
+	private boolean isServiceNotificationEnabled(long userId) {
+		ensureNotificationSettings(userId);
+		Boolean enabled = jdbcTemplate.queryForObject("""
+				SELECT service_notifications_enabled
+				FROM user_notification_settings
+				WHERE user_id = ?
+				""", Boolean.class, userId);
+		return Boolean.TRUE.equals(enabled);
+	}
+
 	private String reportStatusLabel(String status) {
 		return switch (status) {
 			case "REVIEWED" -> "검토 완료";
@@ -1078,7 +1407,48 @@ public class SocialService {
 				resultSet.getBoolean("mine"),
 				readLocalDateTime(resultSet, "created_at"),
 				readLocalDateTime(resultSet, "updated_at"),
-				publicPrimaryBadge(authorUserId)
+				publicPrimaryBadge(authorUserId),
+				findPostMediaResponses(resultSet.getLong("id"))
+		);
+	}
+
+	private List<SocialPostMediaResponse> findPostMediaResponses(long postId) {
+		return jdbcTemplate.query("""
+				SELECT id, post_id, file_name, content_type, size_bytes, sort_order, created_at
+				FROM social_post_media
+				WHERE post_id = ?
+				ORDER BY sort_order ASC, id ASC
+				""",
+				this::mapPostMediaResponse,
+				postId
+		);
+	}
+
+	private SocialPostMediaResponse getPostMediaResponse(long postId, long mediaId) {
+		return jdbcTemplate.queryForObject("""
+				SELECT id, post_id, file_name, content_type, size_bytes, sort_order, created_at
+				FROM social_post_media
+				WHERE id = ?
+					AND post_id = ?
+				""",
+				this::mapPostMediaResponse,
+				mediaId,
+				postId
+		);
+	}
+
+	private SocialPostMediaResponse mapPostMediaResponse(ResultSet resultSet, int rowNumber) throws SQLException {
+		long postId = resultSet.getLong("post_id");
+		long mediaId = resultSet.getLong("id");
+		return new SocialPostMediaResponse(
+				mediaId,
+				postId,
+				resultSet.getString("file_name"),
+				resultSet.getString("content_type"),
+				resultSet.getLong("size_bytes"),
+				resultSet.getInt("sort_order"),
+				"/api/social/posts/" + postId + "/media/" + mediaId,
+				readLocalDateTime(resultSet, "created_at")
 		);
 	}
 
@@ -1244,6 +1614,25 @@ public class SocialService {
 		String normalized = normalizeRequiredCode(status, "Report status is required.");
 		if (!REPORT_STATUSES.contains(normalized)) {
 			throw new SocialRequestException("Unsupported report status.");
+		}
+		return normalized;
+	}
+
+	private String normalizeOptionalNicknameAction(String action) {
+		if (action == null || action.isBlank()) {
+			return null;
+		}
+		String normalized = action.trim().toUpperCase(Locale.ROOT);
+		if (!REPORT_NICKNAME_ACTIONS.contains(normalized)) {
+			throw new SocialRequestException("Unsupported nickname action.");
+		}
+		return normalized;
+	}
+
+	private String normalizeServiceNotificationAudience(String audience) {
+		String normalized = normalizeRequiredCode(audience, "Notification audience is required.");
+		if (!SERVICE_NOTIFICATION_AUDIENCES.contains(normalized)) {
+			throw new SocialRequestException("Unsupported notification audience.");
 		}
 		return normalized;
 	}
