@@ -189,6 +189,33 @@ class SocialControllerTest {
 
 	@Test
 	@Transactional
+	void returnsPublicProfilePostsOnly() throws Exception {
+		createSocialTables();
+		createUserPublicProfilesTable();
+		long userId = userId();
+		insertPublicTextPost(userId, "프로필 공개 기록");
+		insertPost(userId, "성장 카드 공개 기록", "PUBLIC", "READING_GROWTH");
+		insertPrivateTextPost(userId, "프로필 비공개 기록");
+		long hiddenPostId = insertPublicTextPost(userId, "프로필 숨김 기록");
+		hidePost(hiddenPostId);
+
+		mockMvc.perform(get("/api/users/{userId}/social/posts", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 공개 기록')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.content == '성장 카드 공개 기록')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 비공개 기록')]", hasSize(0)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 숨김 기록')]", hasSize(0)));
+
+		mockMvc.perform(get("/api/users/{userId}/social/posts", userId)
+						.param("type", "TEXT"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].content", is("프로필 공개 기록")));
+	}
+
+	@Test
+	@Transactional
 	void canMakePrivatePostPublicAgain() throws Exception {
 		createSocialTables();
 		String accessToken = loginAndExtractAccessToken();
@@ -330,13 +357,17 @@ class SocialControllerTest {
 	}
 
 	private long insertTextPost(long userId, String content, String visibility) {
+		return insertPost(userId, content, visibility, "TEXT");
+	}
+
+	private long insertPost(long userId, String content, String visibility, String postType) {
 		jdbcTemplate.update("""
 				INSERT INTO social_posts (
 					user_id, author_snapshot_nickname, author_anonymized, post_type,
 					visibility, status, content, created_at, updated_at
 				)
-				VALUES (?, '책리더', FALSE, 'TEXT', ?, 'ACTIVE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				""", userId, visibility, content);
+				VALUES (?, '책리더', FALSE, ?, ?, 'ACTIVE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", userId, postType, visibility, content);
 		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM social_posts", Long.class);
 	}
 

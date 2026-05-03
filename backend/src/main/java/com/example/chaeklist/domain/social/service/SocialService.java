@@ -175,6 +175,67 @@ public class SocialService {
 		);
 	}
 
+	public List<SocialPostResponse> getPublicProfilePosts(AuthenticatedUser user, long userId, String type, int limit) {
+		getPublicProfile(userId);
+		String normalizedType = normalizeOptionalPostType(type);
+		if (normalizedType == null) {
+			return jdbcTemplate.query("""
+					SELECT %s
+					FROM social_posts sp
+					LEFT JOIN users u ON u.id = sp.user_id
+					LEFT JOIN books b ON b.id = sp.book_id
+					LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+					WHERE sp.user_id = ?
+						AND sp.visibility = 'PUBLIC'
+						AND sp.status = 'ACTIVE'
+						AND u.status = 'ACTIVE'
+						AND NOT EXISTS (
+							SELECT 1
+							FROM social_admin_hidden_posts hidden
+							WHERE hidden.post_id = sp.id
+						)
+					ORDER BY sp.created_at DESC, sp.id DESC
+					LIMIT ?
+					""".formatted(postSelectColumns(), primaryCategorySubquery()),
+					this::mapPost,
+					nullableUserId(user),
+					nullableUserId(user),
+					nullableUserId(user),
+					nullableUserId(user),
+					userId,
+					normalizeLimit(limit)
+			);
+		}
+		return jdbcTemplate.query("""
+				SELECT %s
+				FROM social_posts sp
+				LEFT JOIN users u ON u.id = sp.user_id
+				LEFT JOIN books b ON b.id = sp.book_id
+				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+				WHERE sp.user_id = ?
+					AND sp.visibility = 'PUBLIC'
+					AND sp.status = 'ACTIVE'
+					AND sp.post_type = ?
+					AND u.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM social_admin_hidden_posts hidden
+						WHERE hidden.post_id = sp.id
+					)
+				ORDER BY sp.created_at DESC, sp.id DESC
+				LIMIT ?
+				""".formatted(postSelectColumns(), primaryCategorySubquery()),
+				this::mapPost,
+				nullableUserId(user),
+				nullableUserId(user),
+				nullableUserId(user),
+				nullableUserId(user),
+				userId,
+				normalizedType,
+				normalizeLimit(limit)
+		);
+	}
+
 	@Transactional
 	public SocialPostResponse createPost(AuthenticatedUser user, SocialPostRequest request) {
 		String postType = normalizePostType(request == null ? null : request.postType());

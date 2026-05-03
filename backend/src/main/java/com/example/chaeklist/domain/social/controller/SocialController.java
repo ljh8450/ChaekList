@@ -157,6 +157,17 @@ public class SocialController {
 		return socialService.getPublicProfile(userId);
 	}
 
+	@GetMapping("/api/users/{userId}/social/posts")
+	@Operation(summary = "공개 프로필 게시글 조회", description = "공개 프로필에서 노출 가능한 PUBLIC/ACTIVE 게시글만 최신순으로 조회합니다.")
+	public List<SocialPostResponse> publicProfilePosts(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long userId,
+			@RequestParam(required = false) String type,
+			@RequestParam(defaultValue = "20") int limit
+	) {
+		return socialService.getPublicProfilePosts(optionalAuthenticate(authorizationHeader).orElse(null), userId, type, limit);
+	}
+
 	@PostMapping("/api/users/{userId}/reports")
 	@SecurityRequirement(name = "bearerAuth")
 	@Operation(summary = "닉네임 신고", description = "부적절한 닉네임 신고를 접수합니다.")
