@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.example.chaeklist.domain.auth.util.TokenService;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminPostHideRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportStatusRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationResponse;
@@ -266,6 +269,59 @@ public class SocialController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@GetMapping("/api/admin/social/reports")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 신고 목록 조회", description = "관리자 계정으로 접수된 신고를 최신순으로 조회합니다.")
+	public List<AdminReportResponse> adminReports(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestParam(required = false) String status,
+			@RequestParam(defaultValue = "20") int limit
+	) {
+		return socialService.getAdminReports(authenticate(authorizationHeader), status, limit);
+	}
+
+	@GetMapping("/api/admin/social/reports/{reportId}")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 신고 상세 조회", description = "관리자 계정으로 신고 상세를 조회합니다.")
+	public AdminReportResponse adminReport(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long reportId
+	) {
+		return socialService.getAdminReport(authenticate(authorizationHeader), reportId);
+	}
+
+	@PatchMapping("/api/admin/social/reports/{reportId}")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 신고 상태 변경", description = "신고 상태를 PENDING, REVIEWED, REJECTED 중 하나로 변경합니다.")
+	public AdminReportResponse updateAdminReport(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long reportId,
+			@RequestBody AdminReportStatusRequest request
+	) {
+		return socialService.updateAdminReport(authenticate(authorizationHeader), reportId, request);
+	}
+
+	@PostMapping("/api/admin/social/posts/{postId}/hide")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 게시글 숨김", description = "공개 영역에서 게시글을 관리자 숨김 처리합니다.")
+	public SocialPostResponse hidePostByAdmin(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long postId,
+			@RequestBody AdminPostHideRequest request
+	) {
+		return socialService.hidePostByAdmin(authenticate(authorizationHeader), postId, request);
+	}
+
+	@DeleteMapping("/api/admin/social/posts/{postId}/hide")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 게시글 숨김 해제", description = "게시글 관리자 숨김 상태를 해제합니다.")
+	public SocialPostResponse unhidePostByAdmin(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long postId
+	) {
+		return socialService.unhidePostByAdmin(authenticate(authorizationHeader), postId);
+	}
+
 	private AuthenticatedUser authenticate(String authorizationHeader) {
 		String token = bearerTokenResolver.resolve(authorizationHeader)
 				.orElseThrow(() -> new UnauthorizedException("Bearer token is required."));
@@ -294,6 +350,11 @@ public class SocialController {
 	@ExceptionHandler(SocialService.SocialRequestException.class)
 	public ResponseEntity<Map<String, String>> handleBadRequest(SocialService.SocialRequestException exception) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler(SocialService.SocialForbiddenException.class)
+	public ResponseEntity<Map<String, String>> handleForbidden(SocialService.SocialForbiddenException exception) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", exception.getMessage()));
 	}
 
 	@ExceptionHandler({ SocialService.SocialNotFoundException.class, EmptyResultDataAccessException.class })

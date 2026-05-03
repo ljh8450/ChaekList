@@ -171,6 +171,30 @@ public final class SocialDtos {
 	) {
 	}
 
+	public record AdminReportResponse(
+			long id,
+			long reporterUserId,
+			String reporterNickname,
+			String targetType,
+			long targetId,
+			String reason,
+			String detail,
+			String status,
+			LocalDateTime createdAt,
+			LocalDateTime updatedAt
+	) {
+	}
+
+	public record AdminReportStatusRequest(
+			String status
+	) {
+	}
+
+	public record AdminPostHideRequest(
+			String reason
+	) {
+	}
+
 	public record SettingsResponse(
 			PrivacySettingsResponse privacy,
 			NotificationSettingsResponse notifications

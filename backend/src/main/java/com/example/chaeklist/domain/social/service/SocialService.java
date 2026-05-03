@@ -10,6 +10,9 @@ import java.util.Set;
 
 import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
 import com.example.chaeklist.domain.mypage.service.MyPageService;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminPostHideRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminReportStatusRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BookSummary;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
@@ -44,6 +47,7 @@ public class SocialService {
 	private static final Set<String> REPORT_TARGET_TYPES = Set.of("POST", "USER_NICKNAME");
 	private static final Set<String> REPORT_REASONS = Set.of("SPAM", "ABUSE", "INAPPROPRIATE_NICKNAME", "INAPPROPRIATE_CONTENT", "OTHER");
 	private static final Set<String> FEED_SORTS = Set.of("LATEST", "LIKES");
+	private static final Set<String> REPORT_STATUSES = Set.of("PENDING", "REVIEWED", "REJECTED");
 
 	private final JdbcTemplate jdbcTemplate;
 	private final MyPageService myPageService;
@@ -572,6 +576,148 @@ public class SocialService {
 		return new BlockResponse(blockedUserId, false);
 	}
 
+	public List<AdminReportResponse> getAdminReports(AuthenticatedUser user, String status, int limit) {
+		requireAdmin(user);
+		String normalizedStatus = normalizeOptionalReportStatus(status);
+		return jdbcTemplate.query("""
+				SELECT %s
+				FROM social_reports sr
+				JOIN users reporter ON reporter.id = sr.reporter_user_id
+				WHERE (? IS NULL OR sr.status = ?)
+				ORDER BY sr.created_at DESC, sr.id DESC
+				LIMIT ?
+				""".formatted(adminReportSelectColumns()),
+				this::mapAdminReport,
+				normalizedStatus,
+				normalizedStatus,
+				normalizeLimit(limit)
+		);
+	}
+
+	public AdminReportResponse getAdminReport(AuthenticatedUser user, long reportId) {
+		requireAdmin(user);
+		return getAdminReportById(reportId);
+	}
+
+	@Transactional
+	public AdminReportResponse updateAdminReport(AuthenticatedUser user, long reportId, AdminReportStatusRequest request) {
+		requireAdmin(user);
+		String status = normalizeReportStatus(request == null ? null : request.status());
+		int updated = jdbcTemplate.update("""
+				UPDATE social_reports
+				SET status = ?,
+					updated_at = CURRENT_TIMESTAMP(6)
+				WHERE id = ?
+				""", status, reportId);
+		if (updated == 0) {
+			throw new SocialNotFoundException("Report not found.");
+		}
+		return getAdminReportById(reportId);
+	}
+
+	@Transactional
+	public SocialPostResponse hidePostByAdmin(AuthenticatedUser user, long postId, AdminPostHideRequest request) {
+		requireAdmin(user);
+		validatePostExists(postId);
+		String reason = truncate(normalizeBlankToNull(request == null ? null : request.reason()), 255);
+		try {
+			jdbcTemplate.update("""
+					INSERT INTO social_admin_hidden_posts (post_id, hidden_by_user_id, reason, created_at)
+					VALUES (?, ?, ?, CURRENT_TIMESTAMP(6))
+					""", postId, user.id(), reason);
+		} catch (DuplicateKeyException ignored) {
+		}
+		return getPostForAdmin(postId);
+	}
+
+	@Transactional
+	public SocialPostResponse unhidePostByAdmin(AuthenticatedUser user, long postId) {
+		requireAdmin(user);
+		validatePostExists(postId);
+		jdbcTemplate.update("""
+				DELETE FROM social_admin_hidden_posts
+				WHERE post_id = ?
+				""", postId);
+		return getPostForAdmin(postId);
+	}
+
+	private void requireAdmin(AuthenticatedUser user) {
+		if (user == null || !"admin@chaeklist.kr".equalsIgnoreCase(user.email())) {
+			throw new SocialForbiddenException("Admin access is required.");
+		}
+	}
+
+	private AdminReportResponse getAdminReportById(long reportId) {
+		return jdbcTemplate.queryForObject("""
+				SELECT %s
+				FROM social_reports sr
+				JOIN users reporter ON reporter.id = sr.reporter_user_id
+				WHERE sr.id = ?
+				""".formatted(adminReportSelectColumns()),
+				this::mapAdminReport,
+				reportId
+		);
+	}
+
+	private String adminReportSelectColumns() {
+		return """
+				sr.id,
+				sr.reporter_user_id,
+				reporter.nickname AS reporter_nickname,
+				sr.target_type,
+				sr.target_id,
+				sr.reason,
+				sr.detail,
+				sr.status,
+				sr.created_at,
+				sr.updated_at
+				""";
+	}
+
+	private AdminReportResponse mapAdminReport(ResultSet resultSet, int rowNumber) throws SQLException {
+		return new AdminReportResponse(
+				resultSet.getLong("id"),
+				resultSet.getLong("reporter_user_id"),
+				resultSet.getString("reporter_nickname"),
+				resultSet.getString("target_type"),
+				resultSet.getLong("target_id"),
+				resultSet.getString("reason"),
+				resultSet.getString("detail"),
+				resultSet.getString("status"),
+				readLocalDateTime(resultSet, "created_at"),
+				readLocalDateTime(resultSet, "updated_at")
+		);
+	}
+
+	private void validatePostExists(long postId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM social_posts
+				WHERE id = ?
+				""", Integer.class, postId);
+		if (count == null || count == 0) {
+			throw new SocialNotFoundException("Post not found.");
+		}
+	}
+
+	private SocialPostResponse getPostForAdmin(long postId) {
+		return jdbcTemplate.queryForObject("""
+				SELECT %s
+				FROM social_posts sp
+				LEFT JOIN users u ON u.id = sp.user_id
+				LEFT JOIN books b ON b.id = sp.book_id
+				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+				WHERE sp.id = ?
+				""".formatted(postSelectColumns(), primaryCategorySubquery()),
+				this::mapPost,
+				null,
+				null,
+				null,
+				null,
+				postId
+		);
+	}
+
 	private SocialPostResponse getPostForOwner(long postId, long userId) {
 		return jdbcTemplate.queryForObject("""
 				SELECT %s
@@ -1032,6 +1178,21 @@ public class SocialService {
 		return normalized;
 	}
 
+	private String normalizeOptionalReportStatus(String status) {
+		if (status == null || status.isBlank()) {
+			return null;
+		}
+		return normalizeReportStatus(status);
+	}
+
+	private String normalizeReportStatus(String status) {
+		String normalized = normalizeRequiredCode(status, "Report status is required.");
+		if (!REPORT_STATUSES.contains(normalized)) {
+			throw new SocialRequestException("Unsupported report status.");
+		}
+		return normalized;
+	}
+
 	private String normalizeRequiredCode(String value, String message) {
 		if (value == null || value.isBlank()) {
 			throw new SocialRequestException(message);
@@ -1114,6 +1275,13 @@ public class SocialService {
 	public static class SocialNotFoundException extends RuntimeException {
 
 		public SocialNotFoundException(String message) {
+			super(message);
+		}
+	}
+
+	public static class SocialForbiddenException extends RuntimeException {
+
+		public SocialForbiddenException(String message) {
 			super(message);
 		}
 	}
