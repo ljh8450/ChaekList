@@ -603,6 +603,8 @@ public class SocialService {
 	public AdminReportResponse updateAdminReport(AuthenticatedUser user, long reportId, AdminReportStatusRequest request) {
 		requireAdmin(user);
 		String status = normalizeReportStatus(request == null ? null : request.status());
+		ReportStatusNotificationTarget notificationTarget = findReportStatusNotificationTarget(reportId)
+				.orElseThrow(() -> new SocialNotFoundException("Report not found."));
 		int updated = jdbcTemplate.update("""
 				UPDATE social_reports
 				SET status = ?,
@@ -611,6 +613,9 @@ public class SocialService {
 				""", status, reportId);
 		if (updated == 0) {
 			throw new SocialNotFoundException("Report not found.");
+		}
+		if (!notificationTarget.status().equals(status)) {
+			createReportStatusNotification(reportId, notificationTarget.reporterUserId(), status);
 		}
 		return getAdminReportById(reportId);
 	}
@@ -970,6 +975,56 @@ public class SocialService {
 		return Boolean.TRUE.equals(enabled);
 	}
 
+	private void createReportStatusNotification(long reportId, long reporterUserId, String status) {
+		if (!isReportStatusNotificationEnabled(reporterUserId)) {
+			return;
+		}
+		jdbcTemplate.update("""
+				INSERT INTO user_notifications (
+					user_id, notification_type, target_type, target_id, title, message, created_at
+				)
+				VALUES (?, 'REPORT_STATUS', 'REPORT', ?, ?, ?, CURRENT_TIMESTAMP(6))
+				""",
+				reporterUserId,
+				reportId,
+				"신고 처리 상태가 변경되었습니다.",
+				"신고 처리 상태가 " + reportStatusLabel(status) + "로 변경되었습니다."
+		);
+	}
+
+	private Optional<ReportStatusNotificationTarget> findReportStatusNotificationTarget(long reportId) {
+		List<ReportStatusNotificationTarget> targets = jdbcTemplate.query("""
+				SELECT reporter_user_id, status
+				FROM social_reports
+				WHERE id = ?
+				""",
+				(resultSet, rowNumber) -> new ReportStatusNotificationTarget(
+						resultSet.getLong("reporter_user_id"),
+						resultSet.getString("status")
+				),
+				reportId
+		);
+		return targets.stream().findFirst();
+	}
+
+	private boolean isReportStatusNotificationEnabled(long userId) {
+		ensureNotificationSettings(userId);
+		Boolean enabled = jdbcTemplate.queryForObject("""
+				SELECT report_status_notifications_enabled
+				FROM user_notification_settings
+				WHERE user_id = ?
+				""", Boolean.class, userId);
+		return Boolean.TRUE.equals(enabled);
+	}
+
+	private String reportStatusLabel(String status) {
+		return switch (status) {
+			case "REVIEWED" -> "검토 완료";
+			case "REJECTED" -> "반려";
+			default -> "대기";
+		};
+	}
+
 	private NotificationResponse getNotification(long userId, long notificationId) {
 		return jdbcTemplate.queryForObject("""
 				SELECT id, notification_type, target_type, target_id, title, message, read_at, created_at
@@ -1287,5 +1342,8 @@ public class SocialService {
 	}
 
 	private record LikeNotificationTarget(long userId) {
+	}
+
+	private record ReportStatusNotificationTarget(long reporterUserId, String status) {
 	}
 }

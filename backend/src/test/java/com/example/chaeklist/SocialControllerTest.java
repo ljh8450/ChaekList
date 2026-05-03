@@ -216,6 +216,15 @@ class SocialControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status", is("REVIEWED")));
 
+		mockMvc.perform(get("/api/me/notifications")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + reporterAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].notificationType", is("REPORT_STATUS")))
+				.andExpect(jsonPath("$[0].targetType", is("REPORT")))
+				.andExpect(jsonPath("$[0].targetId", is((int) reportId)))
+				.andExpect(jsonPath("$[0].read", is(false)));
+
 		mockMvc.perform(post("/api/admin/social/posts/{postId}/hide", postId)
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
 						.contentType(MediaType.APPLICATION_JSON)
