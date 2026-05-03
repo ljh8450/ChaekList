@@ -31,6 +31,9 @@ public class UserAccount {
 	@Column(nullable = false, length = 20)
 	private String status;
 
+	@Column(nullable = false, length = 20)
+	private String role;
+
 	@Column(name = "onboarding_completed", nullable = false)
 	private boolean onboardingCompleted;
 
@@ -48,6 +51,7 @@ public class UserAccount {
 		this.nickname = nickname;
 		this.passwordHash = passwordHash;
 		this.status = status;
+		this.role = "USER";
 		this.onboardingCompleted = false;
 	}
 
@@ -81,6 +85,10 @@ public class UserAccount {
 
 	public String status() {
 		return status;
+	}
+
+	public String role() {
+		return role;
 	}
 
 	public boolean onboardingCompleted() {

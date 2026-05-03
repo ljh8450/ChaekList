@@ -10,6 +10,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -174,7 +178,7 @@ class SocialControllerTest {
 	void adminReviewsReportsAndTogglesHiddenPost() throws Exception {
 		createSocialTables();
 		String reporterAccessToken = loginAndExtractAccessToken();
-		String adminAccessToken = signupAndExtractAccessToken("admin@chaeklist.kr", "admin-reader");
+		String adminAccessToken = insertAdminAndExtractAccessToken("admin@chaeklist.kr", "admin-reader");
 		long userId = userId();
 		long postId = insertPublicTextPost(userId, "관리자 검토 대상 기록");
 
@@ -523,6 +527,44 @@ class SocialControllerTest {
 		return response.get("accessToken").asText();
 	}
 
+	private String insertAdminAndExtractAccessToken(String email, String nickname) throws Exception {
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, ?, 'ACTIVE', 'ADMIN', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", email, nickname, hashPassword("chaeklist123"));
+		String responseBody = mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "chaeklist123"
+								}
+								""".formatted(email)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		JsonNode response = objectMapper.readTree(responseBody);
+		return response.get("accessToken").asText();
+	}
+
+	private String hashPassword(String password) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+			StringBuilder builder = new StringBuilder(bytes.length * 2);
+			for (byte value : bytes) {
+				builder.append(String.format("%02x", value));
+			}
+			return builder.toString();
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("Password hashing is unavailable.", exception);
+		}
+	}
+
 	private long userId() {
 		return jdbcTemplate.queryForObject(
 				"SELECT id FROM users WHERE email = ?",
@@ -565,9 +607,9 @@ class SocialControllerTest {
 	private long insertUser(String email, String nickname) {
 		jdbcTemplate.update("""
 				INSERT INTO users (
-					email, nickname, password_hash, status, onboarding_completed, created_at, updated_at
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
 				)
-				VALUES (?, ?, 'test-hash', 'ACTIVE', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, 'test-hash', 'ACTIVE', 'USER', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, nickname);
 		return jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Long.class, email);
 	}

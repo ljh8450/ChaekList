@@ -642,7 +642,7 @@ public class SocialService {
 	}
 
 	private void requireAdmin(AuthenticatedUser user) {
-		if (user == null || !"admin@chaeklist.kr".equalsIgnoreCase(user.email())) {
+		if (user == null || !"ADMIN".equals(user.role())) {
 			throw new SocialForbiddenException("Admin access is required.");
 		}
 	}

@@ -15,13 +15,15 @@ CREATE TABLE users (
   nickname VARCHAR(50) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  role VARCHAR(20) NOT NULL DEFAULT 'USER',
   onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_email (email),
   UNIQUE KEY uk_users_nickname (nickname),
-  CONSTRAINT chk_users_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'DELETED'))
+  CONSTRAINT chk_users_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'DELETED')),
+  CONSTRAINT chk_users_role CHECK (role IN ('USER', 'ADMIN'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE categories (
