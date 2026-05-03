@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import com.example.chaeklist.domain.book.dto.BookImageEnrichmentResponse;
+import com.example.chaeklist.domain.book.dto.BookImageEnrichmentResponse.ItemResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -44,21 +45,28 @@ public class BookImageEnrichmentService {
 		int updated = 0;
 		int skipped = 0;
 		int failed = 0;
+		java.util.ArrayList<ItemResult> items = new java.util.ArrayList<>();
 
 		for (BookImageTarget target : targets) {
 			try {
-				Optional<String> imageUrl = searchCoverImageUrl(target);
-				if (imageUrl.isEmpty()) {
+				SearchResult searchResult = searchCoverImageUrl(target);
+				if (searchResult.imageUrl().isEmpty()) {
 					skipped++;
+					items.add(toItemResult(target, "SKIPPED", searchResult.reason(), searchResult.queries(), null));
 					continue;
 				}
-				updated += updateCoverImageUrl(target.id(), imageUrl.get());
+				int updateCount = updateCoverImageUrl(target.id(), searchResult.imageUrl().get());
+				updated += updateCount;
+				items.add(toItemResult(target, updateCount > 0 ? "UPDATED" : "SKIPPED",
+						updateCount > 0 ? "UPDATED_WITH_KAKAO_THUMBNAIL" : "COVER_URL_NOT_UPDATABLE",
+						searchResult.queries(), searchResult.imageUrl().get()));
 			} catch (RestClientException exception) {
 				failed++;
+				items.add(toItemResult(target, "FAILED", exception.getClass().getSimpleName(), List.of(searchQuery(target)), null));
 			}
 		}
 
-		return new BookImageEnrichmentResponse(targets.size(), updated, skipped, failed);
+		return new BookImageEnrichmentResponse(targets.size(), updated, skipped, failed, items);
 	}
 
 	private List<BookImageTarget> findTargets(int limit) {
@@ -66,7 +74,7 @@ public class BookImageEnrichmentService {
 				SELECT id, title, author, isbn13
 				FROM books
 				WHERE is_general_eligible = TRUE
-					AND (cover_image_url IS NULL OR cover_image_url = '')
+					AND (cover_image_url IS NULL OR cover_image_url = '' OR cover_image_url LIKE '/book-covers/%')
 				ORDER BY id ASC
 				LIMIT ?
 				""",
@@ -80,10 +88,25 @@ public class BookImageEnrichmentService {
 		);
 	}
 
-	private Optional<String> searchCoverImageUrl(BookImageTarget target) {
+	private SearchResult searchCoverImageUrl(BookImageTarget target) {
+		java.util.ArrayList<String> queries = new java.util.ArrayList<>();
+		for (String query : searchQueries(target)) {
+			if (query.isBlank() || queries.contains(query)) {
+				continue;
+			}
+			queries.add(query);
+			Optional<String> imageUrl = searchCoverImageUrl(query, target);
+			if (imageUrl.isPresent()) {
+				return new SearchResult(imageUrl, queries, "FOUND_KAKAO_THUMBNAIL");
+			}
+		}
+		return new SearchResult(Optional.empty(), queries, "NO_KAKAO_THUMBNAIL");
+	}
+
+	private Optional<String> searchCoverImageUrl(String query, BookImageTarget target) {
 		KakaoBookSearchResponse response = restClient.get()
 				.uri(kakaoBookSearchUrl, uriBuilder -> uriBuilder
-						.queryParam("query", searchQuery(target))
+						.queryParam("query", query)
 						.queryParam("size", 10)
 						.build())
 				.header("Authorization", "KakaoAK " + kakaoApiKey)
@@ -101,10 +124,21 @@ public class BookImageEnrichmentService {
 				.findFirst();
 	}
 
+	private List<String> searchQueries(BookImageTarget target) {
+		if (target.isbn13() != null && !target.isbn13().isBlank()) {
+			return List.of(target.isbn13(), titleAuthorQuery(target), target.title());
+		}
+		return List.of(titleAuthorQuery(target), target.title());
+	}
+
 	private String searchQuery(BookImageTarget target) {
 		if (target.isbn13() != null && !target.isbn13().isBlank()) {
 			return target.isbn13();
 		}
+		return titleAuthorQuery(target);
+	}
+
+	private String titleAuthorQuery(BookImageTarget target) {
 		return target.title() + " " + target.author();
 	}
 
@@ -115,7 +149,7 @@ public class BookImageEnrichmentService {
 					source_provider = COALESCE(NULLIF(source_provider, ''), 'KAKAO'),
 					updated_at = CURRENT_TIMESTAMP
 				WHERE id = ?
-					AND (cover_image_url IS NULL OR cover_image_url = '')
+					AND (cover_image_url IS NULL OR cover_image_url = '' OR cover_image_url LIKE '/book-covers/%')
 				""", imageUrl, bookId);
 	}
 
@@ -152,6 +186,16 @@ public class BookImageEnrichmentService {
 		return Math.min(limit, MAX_LIMIT);
 	}
 
+	private ItemResult toItemResult(
+			BookImageTarget target,
+			String status,
+			String reason,
+			List<String> queries,
+			String imageUrl
+	) {
+		return new ItemResult(String.valueOf(target.id()), target.title(), target.author(), status, reason, queries, imageUrl);
+	}
+
 	public static class BookImageEnrichmentException extends RuntimeException {
 
 		public BookImageEnrichmentException(String message) {
@@ -160,6 +204,9 @@ public class BookImageEnrichmentService {
 	}
 
 	private record BookImageTarget(long id, String title, String author, String isbn13) {
+	}
+
+	private record SearchResult(Optional<String> imageUrl, List<String> queries, String reason) {
 	}
 
 	private record KakaoBookSearchResponse(List<KakaoBookDocument> documents) {

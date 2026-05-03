@@ -27,6 +27,7 @@ import com.example.chaeklist.domain.mypage.dto.ReadingGrowthResponse.Badge;
 import com.example.chaeklist.domain.mypage.dto.ReadingPurposeResponse;
 import com.example.chaeklist.domain.mypage.model.ReadingPurpose;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,9 +39,11 @@ public class MyPageService {
 	private static final Set<String> SUPPORTED_BOOK_INTERACTIONS = Set.of("SAVE", "UNSAVE", "READ", "DISMISS");
 
 	private final JdbcTemplate jdbcTemplate;
+	private final String readingGrowthToday;
 
-	public MyPageService(JdbcTemplate jdbcTemplate) {
+	public MyPageService(JdbcTemplate jdbcTemplate, @Value("${chaeklist.reading-growth.today:}") String readingGrowthToday) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.readingGrowthToday = readingGrowthToday;
 	}
 
 	public MyPageResponse getMyPage(AuthenticatedUser user) {
@@ -562,7 +565,9 @@ public class MyPageService {
 	}
 
 	private ReadingGrowthMetrics getReadingGrowthMetrics(long userId) {
-		LocalDate today = LocalDate.now();
+		LocalDate today = readingGrowthToday == null || readingGrowthToday.isBlank()
+				? LocalDate.now()
+				: LocalDate.parse(readingGrowthToday);
 		LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
 		LocalDateTime nextMonthStart = today.plusMonths(1).withDayOfMonth(1).atStartOfDay();
 		int monthlyReadCount = countMonthlyReadBooks(userId, monthStart, nextMonthStart);

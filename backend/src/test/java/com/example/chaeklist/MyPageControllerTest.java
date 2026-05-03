@@ -21,7 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(properties = "chaeklist.reading-growth.today=2026-04-30")
 @AutoConfigureMockMvc
 @Transactional
 class MyPageControllerTest {
