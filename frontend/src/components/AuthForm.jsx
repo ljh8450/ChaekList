@@ -47,6 +47,7 @@ function createAuthSession(data, fallbackUser) {
       email: data.email ?? fallbackUser.email,
       nickname: data.nickname ?? fallbackUser.nickname,
       status: data.status ?? "ACTIVE",
+      role: data.role ?? fallbackUser.role ?? "USER",
     },
   };
 }

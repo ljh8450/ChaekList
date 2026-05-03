@@ -9,11 +9,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,6 +28,9 @@ class AuthControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	@Test
 	void signsUpActiveUser() throws Exception {
@@ -40,6 +48,7 @@ class AuthControllerTest {
 				.andExpect(jsonPath("$.email", is("new-reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.nickname", is("new-reader")))
 				.andExpect(jsonPath("$.status", is("ACTIVE")))
+				.andExpect(jsonPath("$.role", is("USER")))
 				.andExpect(jsonPath("$.tokenType", is("Bearer")))
 				.andExpect(jsonPath("$.accessToken", not(emptyString())))
 				.andExpect(jsonPath("$.refreshToken", not(emptyString())));
@@ -87,6 +96,7 @@ class AuthControllerTest {
 				.andExpect(jsonPath("$.email", is("reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.nickname", is("quiet-reader")))
 				.andExpect(jsonPath("$.status", is("ACTIVE")))
+				.andExpect(jsonPath("$.role", is("USER")))
 				.andExpect(jsonPath("$.tokenType", is("Bearer")))
 				.andExpect(jsonPath("$.accessToken", not(emptyString())))
 				.andExpect(jsonPath("$.refreshToken", not(emptyString())));
@@ -113,7 +123,40 @@ class AuthControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.email", is("reader@chaeklist.kr")))
 				.andExpect(jsonPath("$.nickname", is("quiet-reader")))
-				.andExpect(jsonPath("$.status", is("ACTIVE")));
+				.andExpect(jsonPath("$.status", is("ACTIVE")))
+				.andExpect(jsonPath("$.role", is("USER")));
+	}
+
+	@Test
+	void returnsAdminRoleOnLoginAndMe() throws Exception {
+		jdbcTemplate.update("DELETE FROM users WHERE email = ?", "admin-auth@chaeklist.kr");
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, ?, 'ACTIVE', 'ADMIN', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", "admin-auth@chaeklist.kr", "admin-auth", hashPassword("chaeklist123"));
+
+		MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "admin-auth@chaeklist.kr",
+								  "password": "chaeklist123"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.role", is("ADMIN")))
+				.andReturn();
+
+		String responseBody = loginResult.getResponse().getContentAsString();
+		String accessToken = responseBody.replaceAll(".*\"accessToken\":\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(get("/api/auth/me")
+						.header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.email", is("admin-auth@chaeklist.kr")))
+				.andExpect(jsonPath("$.role", is("ADMIN")));
 	}
 
 	@Test
@@ -144,5 +187,19 @@ class AuthControllerTest {
 								"""))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message", is("이메일 또는 비밀번호가 올바르지 않습니다.")));
+	}
+
+	private String hashPassword(String password) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+			StringBuilder builder = new StringBuilder(bytes.length * 2);
+			for (byte value : bytes) {
+				builder.append(String.format("%02x", value));
+			}
+			return builder.toString();
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("Password hashing is unavailable.", exception);
+		}
 	}
 }

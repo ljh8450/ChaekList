@@ -13,6 +13,8 @@ public record AuthResponse(
 		String nickname,
 		@Schema(description = "계정 상태", example = "ACTIVE")
 		String status,
+		@Schema(description = "사용자 역할", example = "USER")
+		String role,
 		@Schema(description = "토큰 타입", example = "Bearer")
 		String tokenType,
 		@Schema(description = "API 인증에 사용하는 access token")
@@ -27,6 +29,7 @@ public record AuthResponse(
 				user.email(),
 				user.nickname(),
 				user.status(),
+				user.role(),
 				"Bearer",
 				tokens.accessToken(),
 				tokens.refreshToken()

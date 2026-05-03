@@ -9,6 +9,7 @@ const statusOptions = [
 
 export default function AdminModerationPage() {
   const { accessToken, currentUser, logout } = useAuth();
+  const [resolvedRole, setResolvedRole] = useState(currentUser?.role ?? "");
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [events, setEvents] = useState([]);
@@ -31,6 +32,37 @@ export default function AdminModerationPage() {
     }
     return response;
   }
+
+  useEffect(() => {
+    let ignore = false;
+    async function resolveRole() {
+      if (!accessToken) {
+        return;
+      }
+      if (currentUser?.role) {
+        setResolvedRole(currentUser.role);
+        return;
+      }
+      const response = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (response.status === 401) {
+        logout();
+        return;
+      }
+      if (!response.ok) {
+        return;
+      }
+      const user = await response.json();
+      if (!ignore) {
+        setResolvedRole(user.role ?? "");
+      }
+    }
+    resolveRole();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, currentUser?.role, logout]);
 
   async function loadReports(nextFilter = filter) {
     setStatus("loading");
@@ -63,11 +95,11 @@ export default function AdminModerationPage() {
   }
 
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken && resolvedRole === "ADMIN") {
       loadReports(filter);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, filter]);
+  }, [accessToken, filter, resolvedRole]);
 
   async function updateReport(event) {
     event.preventDefault();
@@ -126,7 +158,15 @@ export default function AdminModerationPage() {
     setMessage(`서비스 공지를 ${data.deliveredCount ?? 0}명에게 보냈습니다.`);
   }
 
-  if (currentUser?.role !== "ADMIN") {
+  if (!resolvedRole) {
+    return (
+      <section className="mx-auto w-full max-w-4xl px-5 py-8">
+        <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280] shadow-sm">관리자 권한을 확인하는 중입니다.</div>
+      </section>
+    );
+  }
+
+  if (resolvedRole !== "ADMIN") {
     return (
       <section className="mx-auto w-full max-w-4xl px-5 py-8">
         <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280] shadow-sm">관리자 권한이 필요합니다.</div>

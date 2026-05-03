@@ -12,10 +12,12 @@ public record AuthUserResponse(
 		@Schema(description = "닉네임", example = "quiet-reader")
 		String nickname,
 		@Schema(description = "계정 상태", example = "ACTIVE")
-		String status
+		String status,
+		@Schema(description = "사용자 역할", example = "USER")
+		String role
 ) {
 
 	public static AuthUserResponse from(AuthenticatedUser user) {
-		return new AuthUserResponse(user.id(), user.email(), user.nickname(), user.status());
+		return new AuthUserResponse(user.id(), user.email(), user.nickname(), user.status(), user.role());
 	}
 }
