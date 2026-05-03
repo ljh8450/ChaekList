@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.chaeklist.domain.book.service.BookImagePredeployRunner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class BookControllerTest {
 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
+
+	@Autowired
+	private BookImagePredeployRunner bookImagePredeployRunner;
 
 	@Test
 	void returnsPublicHome() throws Exception {
@@ -258,6 +262,36 @@ class BookControllerTest {
 						.param("query", "없는검색어"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
+	@Transactional
+	void replacesCallbackStyleSeedCoverUrlWithLocalAsset() {
+		insertSeedBook(741, "Slow Reading", "slow-reading", "LOCAL", "https://example.com/book-cover/callback?id=slow-reading");
+
+		bookImagePredeployRunner.run(null);
+
+		String coverImageUrl = jdbcTemplate.queryForObject("""
+				SELECT cover_image_url
+				FROM books
+				WHERE id = ?
+				""", String.class, 741);
+		org.assertj.core.api.Assertions.assertThat(coverImageUrl).isEqualTo("/book-covers/slow-reading.svg");
+	}
+
+	@Test
+	@Transactional
+	void keepsKakaoSeedCoverUrlDuringPredeploy() {
+		insertSeedBook(742, "Slow Reading", "slow-reading", "LOCAL", "https://img.example.com/slow-reading.jpg");
+
+		bookImagePredeployRunner.run(null);
+
+		String coverImageUrl = jdbcTemplate.queryForObject("""
+				SELECT cover_image_url
+				FROM books
+				WHERE id = ?
+				""", String.class, 742);
+		org.assertj.core.api.Assertions.assertThat(coverImageUrl).isEqualTo("https://img.example.com/slow-reading.jpg");
 	}
 
 	@Test
@@ -701,6 +735,16 @@ class BookControllerTest {
 				)
 				VALUES (?, ?, ?, '상세 설명', ?, 'INCLUDED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", id, title, author, generalEligible);
+	}
+
+	private void insertSeedBook(long id, String title, String sourceBookId, String sourceProvider, String coverImageUrl) {
+		jdbcTemplate.update("""
+				INSERT INTO books (
+					id, title, author, description, cover_image_url, source_provider, source_book_id,
+					is_general_eligible, filter_status, created_at, updated_at
+				)
+				VALUES (?, ?, '테스트 저자', '상세 설명', ?, ?, ?, TRUE, 'INCLUDED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, title, coverImageUrl, sourceProvider, sourceBookId);
 	}
 
 	private void insertBookCategory(long bookId, long categoryId) {

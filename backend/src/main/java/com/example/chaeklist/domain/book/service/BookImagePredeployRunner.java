@@ -5,10 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Order(1)
 public class BookImagePredeployRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(BookImagePredeployRunner.class);
@@ -64,7 +66,7 @@ public class BookImagePredeployRunner implements ApplicationRunner {
 					updated_at = CURRENT_TIMESTAMP
 				WHERE source_book_id = ?
 					AND source_provider IN ('LOCAL', 'DUMMY')
-					AND (cover_image_url IS NULL OR cover_image_url = '')
+					AND (cover_image_url IS NULL OR cover_image_url = '' OR cover_image_url LIKE '%callback%')
 				""", coverImageUrl, sourceBookId);
 	}
 }

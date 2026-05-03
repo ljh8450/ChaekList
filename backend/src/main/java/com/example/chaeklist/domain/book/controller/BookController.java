@@ -149,7 +149,7 @@ public class BookController {
 	}
 
 	@PostMapping("/api/books/images/enrich")
-	@Operation(summary = "책 표지 이미지 일괄 보강", description = "cover_image_url이 비어 있는 책을 Kakao 도서 검색 API로 보강합니다.")
+	@Operation(summary = "책 표지 이미지 일괄 보강", description = "cover_image_url이 비어 있거나 local seed asset인 책을 Kakao 도서 검색 API로 보강합니다.")
 	@ApiResponse(responseCode = "200", description = "이미지 보강 실행 완료")
 	@ApiResponse(responseCode = "401", description = "실행 키 누락 또는 불일치")
 	@ApiResponse(responseCode = "503", description = "이미지 보강 설정 누락")

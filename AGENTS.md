@@ -73,6 +73,7 @@
 - All responses must be written in Korean.
 - Use clear and concise Korean explanations.
 - Keep technical terms in English only when necessary.
+- 문서와 계획 파일도 사용자가 다른 언어를 명시적으로 요청하지 않는 한 한국어로 작성한다.
 
 ## Output rules
 - Summarize:
