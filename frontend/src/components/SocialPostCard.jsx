@@ -94,6 +94,27 @@ export default function SocialPostCard({ post, onChanged, compact = false }) {
         </p>
       ) : null}
 
+      {Array.isArray(post.media) && post.media.length > 0 ? (
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {post.media.map((media) => (
+            <a
+              className="block overflow-hidden rounded-md border border-[#E5E7EB] bg-[#F9FAFB]"
+              href={media.url}
+              key={media.id}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                className="aspect-[4/3] w-full object-cover"
+                src={media.url}
+                alt={media.fileName ?? "게시글 이미지"}
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      ) : null}
+
       <div className="mt-4 flex flex-wrap gap-2">
         {accessToken ? (
           <button

@@ -77,6 +77,14 @@ export default function Header() {
                 <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/settings">
                   설정
                 </Link>
+                <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/notifications">
+                  알림
+                </Link>
+                {currentUser.role === "ADMIN" ? (
+                  <Link className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm font-medium text-[#1E2A38]" to="/admin/moderation">
+                    관리
+                  </Link>
+                ) : null}
                 <button
                   className="rounded-md bg-[#1E2A38] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#27384a]"
                   type="button"
