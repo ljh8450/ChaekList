@@ -160,9 +160,9 @@ class MyPageControllerTest {
 		String accessToken = loginAndExtractAccessToken();
 		long userId = userId();
 		clearReadingGrowthInputs(userId);
-		for (int index = 0; index < 5; index++) {
-			long postId = insertSocialPost(userId, "SNS 성장 활동 " + index);
-			insertSocialLike(postId, userId);
+		for (int index = 0; index < 6; index++) {
+			long postId = insertSocialPost(userId, "SNS 성장 활동 " + index, "2026-04-10 10:00:00");
+			insertSocialLike(postId, userId, "2026-04-10 11:00:00");
 		}
 
 		mockMvc.perform(get("/api/me/mypage")
@@ -173,13 +173,30 @@ class MyPageControllerTest {
 	}
 
 	@Test
+	void countsSocialActivityOnlyForCurrentMonthInReadingGrowthScore() throws Exception {
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		clearReadingGrowthInputs(userId);
+		long previousMonthPostId = insertSocialPost(userId, "지난달 SNS 활동", "2026-03-31 10:00:00");
+		insertSocialLike(previousMonthPostId, userId, "2026-03-31 11:00:00");
+		long currentMonthPostId = insertSocialPost(userId, "이번달 SNS 활동", "2026-04-01 10:00:00");
+		insertSocialLike(currentMonthPostId, userId, "2026-04-01 11:00:00");
+
+		mockMvc.perform(get("/api/me/mypage")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readingGrowth.level", is(1)))
+				.andExpect(jsonPath("$.readingGrowth.progressPercent", is(10)));
+	}
+
+	@Test
 	void ignoresDeletedAndHiddenSocialActivityInReadingGrowthScore() throws Exception {
 		String accessToken = loginAndExtractAccessToken();
 		long userId = userId();
 		clearReadingGrowthInputs(userId);
-		long hiddenPostId = insertSocialPost(userId, "숨김 SNS 활동");
+		long hiddenPostId = insertSocialPost(userId, "숨김 SNS 활동", "2026-04-10 10:00:00");
 		hideSocialPost(hiddenPostId);
-		insertDeletedSocialPost(userId, "삭제 SNS 활동");
+		insertDeletedSocialPost(userId, "삭제 SNS 활동", "2026-04-10 10:00:00");
 
 		mockMvc.perform(get("/api/me/mypage")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -661,32 +678,32 @@ class MyPageControllerTest {
 		jdbcTemplate.update("DELETE FROM social_posts WHERE user_id = ?", userId);
 	}
 
-	private long insertSocialPost(long userId, String content) {
+	private long insertSocialPost(long userId, String content, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO social_posts (
 					user_id, author_snapshot_nickname, author_anonymized, post_type,
 					visibility, status, content, created_at, updated_at
 				)
-				VALUES (?, '책리더', FALSE, 'TEXT', 'PUBLIC', 'ACTIVE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				""", userId, content);
+				VALUES (?, '책리더', FALSE, 'TEXT', 'PUBLIC', 'ACTIVE', ?, ?, ?)
+				""", userId, content, createdAt, createdAt);
 		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM social_posts", Long.class);
 	}
 
-	private void insertDeletedSocialPost(long userId, String content) {
+	private void insertDeletedSocialPost(long userId, String content, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO social_posts (
 					user_id, author_snapshot_nickname, author_anonymized, post_type,
 					visibility, status, content, created_at, updated_at
 				)
-				VALUES (?, '책리더', FALSE, 'TEXT', 'PUBLIC', 'DELETED', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				""", userId, content);
+				VALUES (?, '책리더', FALSE, 'TEXT', 'PUBLIC', 'DELETED', ?, ?, ?)
+				""", userId, content, createdAt, createdAt);
 	}
 
-	private void insertSocialLike(long postId, long userId) {
+	private void insertSocialLike(long postId, long userId, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO social_post_likes (post_id, user_id, created_at)
-				VALUES (?, ?, CURRENT_TIMESTAMP)
-				""", postId, userId);
+				VALUES (?, ?, ?)
+				""", postId, userId, createdAt);
 	}
 
 	private void hideSocialPost(long postId) {

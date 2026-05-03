@@ -578,7 +578,7 @@ public class MyPageService {
 		int recommendationReadCount = countRecommendationConversions(userId, "READ");
 		int recommendationConversionCount = countRecommendationConversions(userId);
 		int purposeMatchReadCount = countPurposeMatchReadBooks(userId);
-		int socialActivityScore = countSocialActivityScore(userId);
+		int socialActivityScore = countSocialActivityScore(userId, monthStart, nextMonthStart);
 		String topCategory = getTopReadCategory(userId).orElse(null);
 
 		return new ReadingGrowthMetrics(
@@ -610,30 +610,34 @@ public class MyPageService {
 		);
 	}
 
-	private int countSocialActivityScore(long userId) {
+	private int countSocialActivityScore(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
 		Integer postCount = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
 				FROM social_posts sp
 				WHERE sp.user_id = ?
 					AND sp.status = 'ACTIVE'
+					AND sp.created_at >= ?
+					AND sp.created_at < ?
 					AND NOT EXISTS (
 						SELECT 1
 						FROM social_admin_hidden_posts hidden
 						WHERE hidden.post_id = sp.id
 					)
-				""", Integer.class, userId);
+				""", Integer.class, userId, monthStart, nextMonthStart);
 		Integer receivedLikeCount = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
 				FROM social_post_likes likes
 				JOIN social_posts sp ON sp.id = likes.post_id
 				WHERE sp.user_id = ?
 					AND sp.status = 'ACTIVE'
+					AND likes.created_at >= ?
+					AND likes.created_at < ?
 					AND NOT EXISTS (
 						SELECT 1
 						FROM social_admin_hidden_posts hidden
 						WHERE hidden.post_id = sp.id
 					)
-				""", Integer.class, userId);
+				""", Integer.class, userId, monthStart, nextMonthStart);
 		return Math.min(nullToZero(postCount), 5) * 2
 				+ Math.min(nullToZero(receivedLikeCount), 5);
 	}
