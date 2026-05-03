@@ -1,6 +1,7 @@
 package com.example.chaeklist;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -184,7 +185,37 @@ class SocialControllerTest {
 						.param("query", "quiet"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(1)))
-				.andExpect(jsonPath("$[0].summary", is("공개 게시글 1개")));
+				.andExpect(jsonPath("$[0].summary", containsString("공개 게시글 1개")));
+	}
+
+	@Test
+	@Transactional
+	void improvesPublicUserSearchSummaryAndOrdering() throws Exception {
+		createSocialTables();
+		createUserPublicProfilesTable();
+		long userId = userId();
+		long directMatchUserId = insertUser("direct@chaeklist.kr", "quiet");
+		insertPublicTextPostAt(userId, "quiet 독서 모임 기록", "2026-04-25 10:00:00");
+		insertPublicTextPostAt(userId, "quiet 검색 보조 기록", "2026-04-26 10:00:00");
+		insertPublicTextPostAt(directMatchUserId, "직접 매칭 유저 공개 기록", "2026-04-20 10:00:00");
+		insertPublicProfile(directMatchUserId);
+		insertCategory(9901, "경제", "test-economy", 1);
+		insertCategory(9902, "철학", "test-philosophy", 2);
+		setInterestsPublic(directMatchUserId);
+		insertUserInterest(directMatchUserId, 9901);
+		insertUserInterest(directMatchUserId, 9902);
+
+		mockMvc.perform(get("/api/search/users")
+						.param("query", "quiet"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].title", is("quiet")))
+				.andExpect(jsonPath("$[0].summary", containsString("공개 게시글 1개")))
+				.andExpect(jsonPath("$[0].summary", containsString("관심 분야 경제, 철학")))
+				.andExpect(jsonPath("$[0].summary", containsString("최근 활동 2026-04-20")))
+				.andExpect(jsonPath("$[1].title", is("quiet-reader")))
+				.andExpect(jsonPath("$[1].summary", containsString("공개 게시글 2개")))
+				.andExpect(jsonPath("$[1].summary", containsString("최근 활동 2026-04-26")));
 	}
 
 	@Test
@@ -356,19 +387,37 @@ class SocialControllerTest {
 		return insertTextPost(userId, content, "PRIVATE");
 	}
 
+	private long insertPublicTextPostAt(long userId, String content, String createdAt) {
+		return insertPostAt(userId, content, "PUBLIC", "TEXT", createdAt);
+	}
+
 	private long insertTextPost(long userId, String content, String visibility) {
 		return insertPost(userId, content, visibility, "TEXT");
 	}
 
 	private long insertPost(long userId, String content, String visibility, String postType) {
+		return insertPostAt(userId, content, visibility, postType, null);
+	}
+
+	private long insertPostAt(long userId, String content, String visibility, String postType, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO social_posts (
 					user_id, author_snapshot_nickname, author_anonymized, post_type,
 					visibility, status, content, created_at, updated_at
 				)
-				VALUES (?, '책리더', FALSE, ?, ?, 'ACTIVE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				""", userId, postType, visibility, content);
+				VALUES (?, '책리더', FALSE, ?, ?, 'ACTIVE', ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+				""", userId, postType, visibility, content, createdAt, createdAt);
 		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM social_posts", Long.class);
+	}
+
+	private long insertUser(String email, String nickname) {
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, 'test-hash', 'ACTIVE', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", email, nickname);
+		return jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Long.class, email);
 	}
 
 	private void insertInteraction(long userId, long bookId, String interactionType, String createdAt) {
@@ -396,6 +445,31 @@ class SocialControllerTest {
 				)
 				VALUES (?, 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PUBLIC', 'PRIVATE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", userId);
+	}
+
+	private void setInterestsPublic(long userId) {
+		jdbcTemplate.update("DELETE FROM user_privacy_settings WHERE user_id = ?", userId);
+		jdbcTemplate.update("""
+				INSERT INTO user_privacy_settings (
+					user_id, read_books_visibility, saved_books_visibility, reading_growth_visibility,
+					badges_visibility, interest_categories_visibility, created_at, updated_at
+				)
+				VALUES (?, 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", userId);
+	}
+
+	private void insertCategory(long id, String name, String slug, int displayOrder) {
+		jdbcTemplate.update("""
+				INSERT INTO categories (id, name, slug, display_order, is_active, created_at, updated_at)
+				VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, name, slug, displayOrder);
+	}
+
+	private void insertUserInterest(long userId, long categoryId) {
+		jdbcTemplate.update("""
+				INSERT INTO user_interest_categories (user_id, category_id, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", userId, categoryId);
 	}
 
 	private void hidePost(long postId) {

@@ -1,5 +1,8 @@
 package com.example.chaeklist.domain.search.service;
 
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -178,7 +181,8 @@ public class SearchService {
 				SELECT
 					u.id,
 					u.nickname,
-					COUNT(DISTINCT sp.id) AS public_post_count
+					COUNT(DISTINCT sp.id) AS public_post_count,
+					MAX(sp.created_at) AS latest_public_activity_at
 				FROM users u
 				LEFT JOIN user_public_profiles upp
 					ON upp.user_id = u.id
@@ -243,23 +247,40 @@ public class SearchService {
 						)
 					)
 				GROUP BY u.id, u.nickname
-				ORDER BY public_post_count DESC, u.nickname ASC
+				ORDER BY
+					CASE
+						WHEN LOWER(u.nickname) = LOWER(?) THEN 0
+						WHEN LOWER(u.nickname) LIKE LOWER(?) THEN 1
+						ELSE 2
+					END,
+					latest_public_activity_at DESC,
+					public_post_count DESC,
+					u.nickname ASC
 				LIMIT ?
 				""",
-				(resultSet, rowNumber) -> new SearchItem(
-						resultSet.getString("id"),
-						"user",
-						resultSet.getString("nickname"),
-						"공개 게시글 " + resultSet.getInt("public_post_count") + "개",
-						"/users/" + resultSet.getString("id"),
-						myPageService.getPublicPrimaryReadingGrowthBadge(resultSet.getLong("id"))
-				),
+				(resultSet, rowNumber) -> {
+					long userId = resultSet.getLong("id");
+					return new SearchItem(
+							resultSet.getString("id"),
+							"user",
+							resultSet.getString("nickname"),
+							publicUserSummary(
+									resultSet.getInt("public_post_count"),
+									findPublicInterestCategoryNames(userId),
+									resultSet.getTimestamp("latest_public_activity_at")
+							),
+							"/users/" + resultSet.getString("id"),
+							myPageService.getPublicPrimaryReadingGrowthBadge(userId)
+					);
+				},
 				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
 				likeQuery(normalizedQuery),
+				normalizedQuery,
+				normalizedQuery + "%",
 				normalizeLimit(limit)
 		);
 	}
@@ -301,6 +322,36 @@ public class SearchService {
 			return content;
 		}
 		return "공개 게시글";
+	}
+
+	private List<String> findPublicInterestCategoryNames(long userId) {
+		return jdbcTemplate.query("""
+				SELECT c.name
+				FROM user_privacy_settings ups
+				JOIN user_interest_categories uic ON uic.user_id = ups.user_id
+				JOIN categories c ON c.id = uic.category_id
+				WHERE ups.user_id = ?
+					AND ups.interest_categories_visibility IN ('PUBLIC', 'PARTIAL')
+					AND c.is_active = TRUE
+				ORDER BY c.display_order ASC, c.name ASC, c.id ASC
+				LIMIT 3
+				""",
+				(resultSet, rowNumber) -> resultSet.getString("name"),
+				userId
+		);
+	}
+
+	private String publicUserSummary(int publicPostCount, List<String> interestCategoryNames, Timestamp latestActivityAt) {
+		List<String> parts = new ArrayList<>();
+		parts.add("공개 게시글 " + publicPostCount + "개");
+		if (!interestCategoryNames.isEmpty()) {
+			parts.add("관심 분야 " + String.join(", ", interestCategoryNames));
+		}
+		if (latestActivityAt != null) {
+			LocalDate latestActivityDate = latestActivityAt.toLocalDateTime().toLocalDate();
+			parts.add("최근 활동 " + latestActivityDate);
+		}
+		return String.join(" · ", parts);
 	}
 
 	public static class SearchRequestException extends RuntimeException {
