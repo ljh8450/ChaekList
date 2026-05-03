@@ -42,6 +42,7 @@ public class SocialService {
 	private static final Set<String> VISIBILITIES = Set.of("PRIVATE", "PUBLIC");
 	private static final Set<String> REPORT_TARGET_TYPES = Set.of("POST", "USER_NICKNAME");
 	private static final Set<String> REPORT_REASONS = Set.of("SPAM", "ABUSE", "INAPPROPRIATE_NICKNAME", "INAPPROPRIATE_CONTENT", "OTHER");
+	private static final Set<String> FEED_SORTS = Set.of("LATEST", "LIKES");
 
 	private final JdbcTemplate jdbcTemplate;
 	private final MyPageService myPageService;
@@ -51,42 +52,9 @@ public class SocialService {
 		this.myPageService = myPageService;
 	}
 
-	public List<SocialPostResponse> getFeed(AuthenticatedUser user, String type, int limit) {
+	public List<SocialPostResponse> getFeed(AuthenticatedUser user, String type, String sort, int limit) {
 		String normalizedType = normalizeOptionalPostType(type);
-		if (normalizedType == null) {
-			return jdbcTemplate.query("""
-					SELECT %s
-					FROM social_posts sp
-					LEFT JOIN users u ON u.id = sp.user_id
-					LEFT JOIN books b ON b.id = sp.book_id
-					LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
-					WHERE sp.visibility = 'PUBLIC'
-						AND sp.status = 'ACTIVE'
-						AND (sp.user_id IS NULL OR u.status = 'ACTIVE')
-						AND NOT EXISTS (
-							SELECT 1
-							FROM social_admin_hidden_posts hidden
-							WHERE hidden.post_id = sp.id
-						)
-						AND (? IS NULL OR sp.user_id IS NULL OR NOT EXISTS (
-							SELECT 1
-							FROM user_blocks block
-							WHERE block.blocker_user_id = ?
-								AND block.blocked_user_id = sp.user_id
-						))
-					ORDER BY sp.created_at DESC, sp.id DESC
-					LIMIT ?
-					""".formatted(postSelectColumns(), primaryCategorySubquery()),
-					this::mapPost,
-					nullableUserId(user),
-					nullableUserId(user),
-					nullableUserId(user),
-					nullableUserId(user),
-					nullableUserId(user),
-					nullableUserId(user),
-					normalizeLimit(limit)
-			);
-		}
+		String orderBy = feedOrderBy(sort);
 		return jdbcTemplate.query("""
 				SELECT %s
 				FROM social_posts sp
@@ -95,7 +63,7 @@ public class SocialService {
 				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
 				WHERE sp.visibility = 'PUBLIC'
 					AND sp.status = 'ACTIVE'
-					AND sp.post_type = ?
+					AND (? IS NULL OR sp.post_type = ?)
 					AND (sp.user_id IS NULL OR u.status = 'ACTIVE')
 					AND NOT EXISTS (
 						SELECT 1
@@ -108,14 +76,15 @@ public class SocialService {
 						WHERE block.blocker_user_id = ?
 							AND block.blocked_user_id = sp.user_id
 					))
-				ORDER BY sp.created_at DESC, sp.id DESC
+				ORDER BY %s
 				LIMIT ?
-				""".formatted(postSelectColumns(), primaryCategorySubquery()),
+				""".formatted(postSelectColumns(), primaryCategorySubquery(), orderBy),
 				this::mapPost,
 				nullableUserId(user),
 				nullableUserId(user),
 				nullableUserId(user),
 				nullableUserId(user),
+				normalizedType,
 				normalizedType,
 				nullableUserId(user),
 				nullableUserId(user),
@@ -894,6 +863,25 @@ public class SocialService {
 			return null;
 		}
 		return normalizePostType(postType);
+	}
+
+	private String feedOrderBy(String sort) {
+		String normalized = normalizeFeedSort(sort);
+		if ("LIKES".equals(normalized)) {
+			return "like_count DESC, sp.created_at DESC, sp.id DESC";
+		}
+		return "sp.created_at DESC, sp.id DESC";
+	}
+
+	private String normalizeFeedSort(String sort) {
+		if (sort == null || sort.isBlank()) {
+			return "LATEST";
+		}
+		String normalized = sort.trim().toUpperCase(Locale.ROOT);
+		if (!FEED_SORTS.contains(normalized)) {
+			throw new SocialRequestException("Unsupported feed sort.");
+		}
+		return normalized;
 	}
 
 	private String normalizeVisibility(String visibility, String defaultValue) {

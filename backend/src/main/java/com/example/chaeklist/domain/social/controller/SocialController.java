@@ -54,14 +54,15 @@ public class SocialController {
 	}
 
 	@GetMapping("/api/social/feed")
-	@Operation(summary = "공개 피드 조회", description = "PUBLIC/ACTIVE 게시글만 최신순으로 조회합니다. 비활성화 계정과 관리자 숨김 게시글은 제외됩니다.")
+	@Operation(summary = "공개 피드 조회", description = "PUBLIC/ACTIVE 게시글만 조회합니다. 비활성화 계정과 관리자 숨김 게시글은 제외됩니다.")
 	@ApiResponse(responseCode = "200", description = "공개 피드 조회 성공")
 	public List<SocialPostResponse> feed(
 			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
 			@RequestParam(required = false) String type,
+			@RequestParam(defaultValue = "latest") String sort,
 			@RequestParam(defaultValue = "20") int limit
 	) {
-		return socialService.getFeed(optionalAuthenticate(authorizationHeader).orElse(null), type, limit);
+		return socialService.getFeed(optionalAuthenticate(authorizationHeader).orElse(null), type, sort, limit);
 	}
 
 	@PostMapping("/api/social/posts")

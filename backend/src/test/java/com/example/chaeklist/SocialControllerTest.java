@@ -66,6 +66,38 @@ class SocialControllerTest {
 
 	@Test
 	@Transactional
+	void filtersAndSortsPublicFeed() throws Exception {
+		createSocialTables();
+		long userId = userId();
+		long textPostId = insertPublicTextPostAt(userId, "최신 자유 글", "2026-04-27 10:00:00");
+		long growthPostId = insertPostAt(userId, "좋아요 많은 성장 카드", "PUBLIC", "READING_GROWTH", "2026-04-26 10:00:00");
+		insertPostLike(growthPostId, 90001);
+		insertPostLike(growthPostId, 90002);
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("sort", "latest"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is((int) textPostId)))
+				.andExpect(jsonPath("$[1].id", is((int) growthPostId)));
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("sort", "likes"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is((int) growthPostId)))
+				.andExpect(jsonPath("$[0].likeCount", is(2)))
+				.andExpect(jsonPath("$[1].id", is((int) textPostId)));
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("type", "TEXT"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is((int) textPostId)));
+	}
+
+	@Test
+	@Transactional
 	void likesAreIdempotent() throws Exception {
 		createSocialTables();
 		String accessToken = loginAndExtractAccessToken();
@@ -470,6 +502,13 @@ class SocialControllerTest {
 				INSERT INTO user_interest_categories (user_id, category_id, created_at)
 				VALUES (?, ?, CURRENT_TIMESTAMP)
 				""", userId, categoryId);
+	}
+
+	private void insertPostLike(long postId, long userId) {
+		jdbcTemplate.update("""
+				INSERT INTO social_post_likes (post_id, user_id, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", postId, userId);
 	}
 
 	private void hidePost(long postId) {
