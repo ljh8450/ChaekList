@@ -6,6 +6,7 @@ import java.util.Map;
 import com.example.chaeklist.domain.auth.util.TokenService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationSettingsRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationSettingsResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.PrivacySettingsRequest;
@@ -233,6 +234,26 @@ public class SocialController {
 			@RequestBody NotificationSettingsRequest request
 	) {
 		return socialService.updateNotificationSettings(authenticate(authorizationHeader), request);
+	}
+
+	@GetMapping("/api/me/notifications")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "내 알림 목록 조회", description = "현재 사용자의 저장형 알림을 최신순으로 조회합니다.")
+	public List<NotificationResponse> notifications(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@RequestParam(defaultValue = "20") int limit
+	) {
+		return socialService.getNotifications(authenticate(authorizationHeader), limit);
+	}
+
+	@PatchMapping("/api/me/notifications/{notificationId}/read")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "알림 읽음 처리", description = "현재 사용자의 알림을 읽음 상태로 전환합니다.")
+	public NotificationResponse readNotification(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long notificationId
+	) {
+		return socialService.markNotificationRead(authenticate(authorizationHeader), notificationId);
 	}
 
 	@PostMapping("/api/me/withdraw")

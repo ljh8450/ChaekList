@@ -158,6 +158,19 @@ public final class SocialDtos {
 	) {
 	}
 
+	public record NotificationResponse(
+			long id,
+			String notificationType,
+			String targetType,
+			long targetId,
+			String title,
+			String message,
+			boolean read,
+			LocalDateTime readAt,
+			LocalDateTime createdAt
+	) {
+	}
+
 	public record SettingsResponse(
 			PrivacySettingsResponse privacy,
 			NotificationSettingsResponse notifications

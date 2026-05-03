@@ -13,6 +13,7 @@ import com.example.chaeklist.domain.mypage.service.MyPageService;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BlockResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.BookSummary;
 import com.example.chaeklist.domain.social.dto.SocialDtos.LikeResponse;
+import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationSettingsRequest;
 import com.example.chaeklist.domain.social.dto.SocialDtos.NotificationSettingsResponse;
 import com.example.chaeklist.domain.social.dto.SocialDtos.PrivacySettingsRequest;
@@ -296,6 +297,7 @@ public class SocialService {
 					INSERT INTO social_post_likes (post_id, user_id, created_at)
 					VALUES (?, ?, CURRENT_TIMESTAMP(6))
 					""", postId, user.id());
+			createLikeNotification(postId, user);
 		} catch (DuplicateKeyException ignored) {
 		}
 		return new LikeResponse(postId, true, countLikes(postId));
@@ -420,6 +422,34 @@ public class SocialService {
 				),
 				user.id()
 		);
+	}
+
+	public List<NotificationResponse> getNotifications(AuthenticatedUser user, int limit) {
+		return jdbcTemplate.query("""
+				SELECT id, notification_type, target_type, target_id, title, message, read_at, created_at
+				FROM user_notifications
+				WHERE user_id = ?
+				ORDER BY created_at DESC, id DESC
+				LIMIT ?
+				""",
+				this::mapNotification,
+				user.id(),
+				normalizeLimit(limit)
+		);
+	}
+
+	@Transactional
+	public NotificationResponse markNotificationRead(AuthenticatedUser user, long notificationId) {
+		int updated = jdbcTemplate.update("""
+				UPDATE user_notifications
+				SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP(6))
+				WHERE id = ?
+					AND user_id = ?
+				""", notificationId, user.id());
+		if (updated == 0) {
+			throw new SocialNotFoundException("Notification not found.");
+		}
+		return getNotification(user.id(), notificationId);
 	}
 
 	@Transactional
@@ -753,6 +783,75 @@ public class SocialService {
 		return count != null && count > 0;
 	}
 
+	private void createLikeNotification(long postId, AuthenticatedUser liker) {
+		LikeNotificationTarget target = findLikeNotificationTarget(postId).orElse(null);
+		if (target == null || target.userId() == liker.id() || !isLikeNotificationEnabled(target.userId())) {
+			return;
+		}
+		jdbcTemplate.update("""
+				INSERT INTO user_notifications (
+					user_id, notification_type, target_type, target_id, title, message, created_at
+				)
+				VALUES (?, 'LIKE', 'POST', ?, ?, ?, CURRENT_TIMESTAMP(6))
+				""",
+				target.userId(),
+				postId,
+				"게시글에 좋아요가 추가되었습니다.",
+				liker.nickname() + "님이 회원님의 게시글을 좋아합니다."
+		);
+	}
+
+	private Optional<LikeNotificationTarget> findLikeNotificationTarget(long postId) {
+		List<LikeNotificationTarget> targets = jdbcTemplate.query("""
+				SELECT user_id
+				FROM social_posts
+				WHERE id = ?
+					AND user_id IS NOT NULL
+				""",
+				(resultSet, rowNumber) -> new LikeNotificationTarget(resultSet.getLong("user_id")),
+				postId
+		);
+		return targets.stream().findFirst();
+	}
+
+	private boolean isLikeNotificationEnabled(long userId) {
+		ensureNotificationSettings(userId);
+		Boolean enabled = jdbcTemplate.queryForObject("""
+				SELECT like_notifications_enabled
+				FROM user_notification_settings
+				WHERE user_id = ?
+				""", Boolean.class, userId);
+		return Boolean.TRUE.equals(enabled);
+	}
+
+	private NotificationResponse getNotification(long userId, long notificationId) {
+		return jdbcTemplate.queryForObject("""
+				SELECT id, notification_type, target_type, target_id, title, message, read_at, created_at
+				FROM user_notifications
+				WHERE id = ?
+					AND user_id = ?
+				""",
+				this::mapNotification,
+				notificationId,
+				userId
+		);
+	}
+
+	private NotificationResponse mapNotification(ResultSet resultSet, int rowNumber) throws SQLException {
+		LocalDateTime readAt = readLocalDateTime(resultSet, "read_at");
+		return new NotificationResponse(
+				resultSet.getLong("id"),
+				resultSet.getString("notification_type"),
+				resultSet.getString("target_type"),
+				resultSet.getLong("target_id"),
+				resultSet.getString("title"),
+				resultSet.getString("message"),
+				readAt != null,
+				readAt,
+				readLocalDateTime(resultSet, "created_at")
+		);
+	}
+
 	private SocialPostResponse mapPost(ResultSet resultSet, int rowNumber) throws SQLException {
 		Long authorUserId = getNullableLong(resultSet, "user_id");
 		Long bookId = getNullableLong(resultSet, "book_id");
@@ -1017,5 +1116,8 @@ public class SocialService {
 		public SocialNotFoundException(String message) {
 			super(message);
 		}
+	}
+
+	private record LikeNotificationTarget(long userId) {
 	}
 }

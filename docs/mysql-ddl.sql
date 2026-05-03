@@ -248,6 +248,30 @@ CREATE TABLE feed_items (
   )
 ) ENGINE=InnoDB;
 
+CREATE TABLE user_notifications (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  notification_type VARCHAR(30) NOT NULL,
+  target_type VARCHAR(30) NOT NULL,
+  target_id BIGINT NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  message VARCHAR(255) NOT NULL,
+  read_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_user_notifications_user_created (user_id, created_at),
+  KEY idx_user_notifications_user_read_created (user_id, read_at, created_at),
+  CONSTRAINT fk_user_notifications_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_user_notifications_type CHECK (
+    notification_type IN ('LIKE', 'REPORT_STATUS', 'SERVICE')
+  ),
+  CONSTRAINT chk_user_notifications_target_type CHECK (
+    target_type IN ('POST', 'REPORT', 'SERVICE')
+  )
+) ENGINE=InnoDB;
+
 INSERT INTO categories (name, slug, display_order)
 VALUES
   ('인문', 'humanities', 1),
