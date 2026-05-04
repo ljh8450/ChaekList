@@ -546,7 +546,8 @@ public class MyPageService {
 				+ metrics.purposeMatchReadCount() * 10
 				+ metrics.recommendationSavedCount() * 5
 				+ metrics.recommendationReadCount() * 15
-				+ metrics.socialActivityScore();
+				+ metrics.socialActivityScore()
+				+ metrics.readingRoomActivityScore();
 
 		List<Badge> badges = getReadingGrowthBadges(metrics);
 		Badge primaryBadge = selectPrimaryBadge(badges);
@@ -579,6 +580,8 @@ public class MyPageService {
 		int recommendationConversionCount = countRecommendationConversions(userId);
 		int purposeMatchReadCount = countPurposeMatchReadBooks(userId);
 		int socialActivityScore = countSocialActivityScore(userId, monthStart, nextMonthStart);
+		int readingRoomCompletedCount = countCompletedReadingRooms(userId);
+		int readingRoomActivityScore = countReadingRoomActivityScore(userId, monthStart, nextMonthStart);
 		String topCategory = getTopReadCategory(userId).orElse(null);
 
 		return new ReadingGrowthMetrics(
@@ -591,6 +594,8 @@ public class MyPageService {
 				recommendationConversionCount,
 				purposeMatchReadCount,
 				socialActivityScore,
+				readingRoomCompletedCount,
+				readingRoomActivityScore,
 				topCategory
 		);
 	}
@@ -605,6 +610,8 @@ public class MyPageService {
 				0,
 				countRecommendationConversions(userId),
 				countPurposeMatchReadBooks(userId),
+				0,
+				countCompletedReadingRooms(userId),
 				0,
 				null
 		);
@@ -640,6 +647,36 @@ public class MyPageService {
 				""", Integer.class, userId, monthStart, nextMonthStart);
 		return Math.min(nullToZero(postCount), 5) * 2
 				+ Math.min(nullToZero(receivedLikeCount), 5);
+	}
+
+	private int countReadingRoomActivityScore(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
+		return Math.min(countCompletedReadingRooms(userId, monthStart, nextMonthStart) * 2, 6);
+	}
+
+	private int countCompletedReadingRooms(long userId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT participant.room_id)
+				FROM reading_room_participants participant
+				JOIN reading_rooms room ON room.id = participant.room_id
+				WHERE participant.user_id = ?
+					AND participant.status = 'COMPLETED'
+					AND room.status <> 'CANCELED'
+				""", Integer.class, userId);
+		return count == null ? 0 : count;
+	}
+
+	private int countCompletedReadingRooms(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(DISTINCT participant.room_id)
+				FROM reading_room_participants participant
+				JOIN reading_rooms room ON room.id = participant.room_id
+				WHERE participant.user_id = ?
+					AND participant.status = 'COMPLETED'
+					AND participant.completed_at >= ?
+					AND participant.completed_at < ?
+					AND room.status <> 'CANCELED'
+				""", Integer.class, userId, monthStart, nextMonthStart);
+		return count == null ? 0 : count;
 	}
 
 	private int countMonthlyReadBooks(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
@@ -829,6 +866,12 @@ public class MyPageService {
 		if (metrics.purposeMatchReadCount() >= 3) {
 			badges.add(new Badge("PURPOSE_MATCH", "목적 맞춤 독서", "선택한 독서 목적과 맞는 책을 3권 이상 읽었습니다."));
 		}
+		if (metrics.readingRoomCompletedCount() >= 1) {
+			badges.add(new Badge("FIRST_READING_ROOM", "첫 모각독 완료", "모각독에 참여하고 종료 후 인증을 완료했습니다."));
+		}
+		if (metrics.readingRoomCompletedCount() >= 4) {
+			badges.add(new Badge("STEADY_READING_ROOM", "꾸준한 모각독", "모각독 인증을 4회 이상 완료했습니다."));
+		}
 		return badges;
 	}
 
@@ -845,6 +888,8 @@ public class MyPageService {
 				.or(() -> findBadge(badges, "CATEGORY_EXPLORER"))
 				.or(() -> findBadge(badges, "SAVED_TO_READ"))
 				.or(() -> findBadge(badges, "RECOMMENDATION_FOLLOWER"))
+				.or(() -> findBadge(badges, "STEADY_READING_ROOM"))
+				.or(() -> findBadge(badges, "FIRST_READING_ROOM"))
 				.or(() -> findBadge(badges, "FIRST_READ"))
 				.orElse(new Badge(
 						"RECORD_START",
@@ -898,6 +943,9 @@ public class MyPageService {
 		}
 		if (metrics.purposeMatchReadCount() >= 3) {
 			return "선택한 독서 목적과 맞는 책을 꾸준히 읽고 있습니다.";
+		}
+		if (metrics.readingRoomCompletedCount() >= 1) {
+			return "모각독 인증을 통해 읽기 흐름을 이어가고 있습니다.";
 		}
 		if (metrics.topCategory() != null && metrics.categoryDiversityCount() >= 2) {
 			return metrics.topCategory() + " 분야를 중심으로 여러 분야로 독서 폭을 넓히고 있습니다.";
@@ -974,6 +1022,8 @@ public class MyPageService {
 			int recommendationConversionCount,
 			int purposeMatchReadCount,
 			int socialActivityScore,
+			int readingRoomCompletedCount,
+			int readingRoomActivityScore,
 			String topCategory
 	) {
 	}

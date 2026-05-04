@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -162,6 +165,40 @@ class ReadingRoomControllerTest {
 				.andExpect(status().isBadRequest());
 	}
 
+	@Test
+	@Transactional
+	void adminHidesAndUnhidesReadingRoom() throws Exception {
+		createReadingRoomTables();
+		insertBook(9401, "숨김 대상 책");
+		String ownerToken = loginAndExtractAccessToken();
+		String adminToken = insertAdminAndExtractAccessToken("reading-admin@chaeklist.kr", "reading-admin");
+		LocalDateTime startAt = LocalDateTime.now().plusDays(3).withNano(0);
+		long roomId = createRoom(ownerToken, 9401, "숨김 대상 모각독", startAt, startAt.plusHours(1), "hide-room");
+
+		mockMvc.perform(post("/api/admin/reading-rooms/{roomId}/hide", roomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "reason": "신고 검토 후 숨김"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) roomId)));
+
+		mockMvc.perform(get("/api/reading-rooms/{roomId}", roomId))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(delete("/api/admin/reading-rooms/{roomId}/hide", roomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) roomId)));
+
+		mockMvc.perform(get("/api/reading-rooms/{roomId}", roomId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) roomId)));
+	}
+
 	private long createRoom(String accessToken, long bookId, String title, LocalDateTime startAt, LocalDateTime endAt, String idempotencyKey) throws Exception {
 		String responseBody = mockMvc.perform(post("/api/reading-rooms")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -218,6 +255,44 @@ class ReadingRoomControllerTest {
 
 		JsonNode response = objectMapper.readTree(responseBody);
 		return response.get("accessToken").asText();
+	}
+
+	private String insertAdminAndExtractAccessToken(String email, String nickname) throws Exception {
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, ?, 'ACTIVE', 'ADMIN', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", email, nickname, hashPassword("chaeklist123"));
+		String responseBody = mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "chaeklist123"
+								}
+								""".formatted(email)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		JsonNode response = objectMapper.readTree(responseBody);
+		return response.get("accessToken").asText();
+	}
+
+	private String hashPassword(String password) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+			StringBuilder builder = new StringBuilder(bytes.length * 2);
+			for (byte value : bytes) {
+				builder.append(String.format("%02x", value));
+			}
+			return builder.toString();
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("Password hashing is unavailable.", exception);
+		}
 	}
 
 	private long userId() {
@@ -294,6 +369,14 @@ class ReadingRoomControllerTest {
 					progress VARCHAR(100),
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					CONSTRAINT uk_reading_room_checkins_room_user UNIQUE (room_id, user_id)
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS reading_room_admin_hidden (
+					room_id BIGINT PRIMARY KEY,
+					hidden_by_user_id BIGINT,
+					reason VARCHAR(255),
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
 	}

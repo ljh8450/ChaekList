@@ -11,6 +11,10 @@ import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomC
 import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomParticipantResponse;
 import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomResponse;
 import com.example.chaeklist.domain.readingroom.service.ReadingRoomService;
+import com.example.chaeklist.domain.social.dto.SocialDtos.AdminPostHideRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.ReportRequest;
+import com.example.chaeklist.domain.social.dto.SocialDtos.ReportResponse;
+import com.example.chaeklist.domain.social.service.SocialService;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import com.example.chaeklist.global.auth.BearerTokenResolver;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,15 +41,18 @@ public class ReadingRoomController {
 
 	private final BearerTokenResolver bearerTokenResolver;
 	private final ReadingRoomService readingRoomService;
+	private final SocialService socialService;
 	private final TokenService tokenService;
 
 	public ReadingRoomController(
 			BearerTokenResolver bearerTokenResolver,
 			ReadingRoomService readingRoomService,
+			SocialService socialService,
 			TokenService tokenService
 	) {
 		this.bearerTokenResolver = bearerTokenResolver;
 		this.readingRoomService = readingRoomService;
+		this.socialService = socialService;
 		this.tokenService = tokenService;
 	}
 
@@ -132,6 +139,44 @@ public class ReadingRoomController {
 		return readingRoomService.checkIn(authenticate(authorizationHeader), roomId, request);
 	}
 
+	@PostMapping("/api/reading-rooms/{roomId}/reports")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "모각독 방 신고", description = "공개 모각독 방 신고를 접수합니다.")
+	public ReportResponse reportReadingRoom(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long roomId,
+			@RequestBody ReportRequest request
+	) {
+		ReportRequest normalizedRequest = new ReportRequest(
+				"READING_ROOM",
+				roomId,
+				request == null ? null : request.reason(),
+				request == null ? null : request.detail()
+		);
+		return socialService.report(authenticate(authorizationHeader), normalizedRequest);
+	}
+
+	@PostMapping("/api/admin/reading-rooms/{roomId}/hide")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 모각독 방 숨김", description = "공개 영역에서 모각독 방을 관리자 숨김 처리합니다.")
+	public ReadingRoomResponse hideReadingRoomByAdmin(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long roomId,
+			@RequestBody AdminPostHideRequest request
+	) {
+		return readingRoomService.hideReadingRoomByAdmin(authenticate(authorizationHeader), roomId, request == null ? null : request.reason());
+	}
+
+	@DeleteMapping("/api/admin/reading-rooms/{roomId}/hide")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "관리자 모각독 방 숨김 해제", description = "모각독 방 관리자 숨김 상태를 해제합니다.")
+	public ReadingRoomResponse unhideReadingRoomByAdmin(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long roomId
+	) {
+		return readingRoomService.unhideReadingRoomByAdmin(authenticate(authorizationHeader), roomId);
+	}
+
 	private AuthenticatedUser authenticate(String authorizationHeader) {
 		String token = bearerTokenResolver.resolve(authorizationHeader)
 				.orElseThrow(() -> new UnauthorizedException("Bearer token is required."));
@@ -162,9 +207,19 @@ public class ReadingRoomController {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
 	}
 
-	@ExceptionHandler({ ReadingRoomService.ReadingRoomNotFoundException.class, EmptyResultDataAccessException.class })
+	@ExceptionHandler({ ReadingRoomService.ReadingRoomForbiddenException.class, SocialService.SocialForbiddenException.class })
+	public ResponseEntity<Map<String, String>> handleForbidden(RuntimeException exception) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", exception.getMessage()));
+	}
+
+	@ExceptionHandler({ ReadingRoomService.ReadingRoomNotFoundException.class, SocialService.SocialNotFoundException.class, EmptyResultDataAccessException.class })
 	public ResponseEntity<Map<String, String>> handleNotFound(RuntimeException exception) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Resource not found."));
+	}
+
+	@ExceptionHandler(SocialService.SocialRequestException.class)
+	public ResponseEntity<Map<String, String>> handleSocialBadRequest(SocialService.SocialRequestException exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", exception.getMessage()));
 	}
 
 	static class UnauthorizedException extends RuntimeException {

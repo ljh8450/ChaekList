@@ -58,6 +58,11 @@ public class ReadingRoomService {
 					LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
 					WHERE rr.visibility = 'PUBLIC'
 						AND host.status = 'ACTIVE'
+						AND NOT EXISTS (
+							SELECT 1
+							FROM reading_room_admin_hidden hidden
+							WHERE hidden.room_id = rr.id
+						)
 					ORDER BY rr.start_at ASC, rr.id ASC
 					LIMIT ?
 					""".formatted(selectColumns(), primaryCategorySubquery()),
@@ -76,6 +81,11 @@ public class ReadingRoomService {
 				WHERE rr.visibility = 'PUBLIC'
 					AND host.status = 'ACTIVE'
 					AND rr.book_id = ?
+					AND NOT EXISTS (
+						SELECT 1
+						FROM reading_room_admin_hidden hidden
+						WHERE hidden.room_id = rr.id
+					)
 				ORDER BY rr.start_at ASC, rr.id ASC
 				LIMIT ?
 				""".formatted(selectColumns(), primaryCategorySubquery()),
@@ -95,6 +105,29 @@ public class ReadingRoomService {
 
 	public ReadingRoomResponse getReadingRoom(AuthenticatedUser user, long roomId) {
 		return findRoom(user, roomId).orElseThrow(() -> new ReadingRoomNotFoundException("Reading room not found."));
+	}
+
+	@Transactional
+	public ReadingRoomResponse hideReadingRoomByAdmin(AuthenticatedUser user, long roomId, String reason) {
+		validateAdmin(user);
+		getAdminReadingRoom(user, roomId);
+		jdbcTemplate.update("""
+				INSERT INTO reading_room_admin_hidden (room_id, hidden_by_user_id, reason, created_at)
+				VALUES (?, ?, ?, CURRENT_TIMESTAMP(6))
+				ON DUPLICATE KEY UPDATE
+					hidden_by_user_id = VALUES(hidden_by_user_id),
+					reason = VALUES(reason),
+					created_at = CURRENT_TIMESTAMP(6)
+				""", roomId, user.id(), normalizeOptionalText(reason, 255));
+		return getAdminReadingRoom(user, roomId);
+	}
+
+	@Transactional
+	public ReadingRoomResponse unhideReadingRoomByAdmin(AuthenticatedUser user, long roomId) {
+		validateAdmin(user);
+		ReadingRoomResponse room = getAdminReadingRoom(user, roomId);
+		jdbcTemplate.update("DELETE FROM reading_room_admin_hidden WHERE room_id = ?", roomId);
+		return room;
 	}
 
 	public List<ReadingRoomResponse> getMyReadingRooms(AuthenticatedUser user, String status, int limit) {
@@ -290,11 +323,37 @@ public class ReadingRoomService {
 				WHERE rr.id = ?
 					AND rr.visibility = 'PUBLIC'
 					AND host.status = 'ACTIVE'
+					AND NOT EXISTS (
+						SELECT 1
+						FROM reading_room_admin_hidden hidden
+						WHERE hidden.room_id = rr.id
+					)
 				""".formatted(selectColumns(), primaryCategorySubquery()),
 				(resultSet, rowNumber) -> mapRoom(resultSet, user),
 				roomId
 		);
 		return rooms.stream().findFirst();
+	}
+
+	private ReadingRoomResponse getAdminReadingRoom(AuthenticatedUser user, long roomId) {
+		List<ReadingRoomResponse> rooms = jdbcTemplate.query("""
+				SELECT %s
+				FROM reading_rooms rr
+				JOIN users host ON host.id = rr.host_user_id
+				JOIN books b ON b.id = rr.book_id
+				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
+				WHERE rr.id = ?
+				""".formatted(selectColumns(), primaryCategorySubquery()),
+				(resultSet, rowNumber) -> mapRoom(resultSet, user),
+				roomId
+		);
+		return rooms.stream().findFirst().orElseThrow(() -> new ReadingRoomNotFoundException("Reading room not found."));
+	}
+
+	private void validateAdmin(AuthenticatedUser user) {
+		if (user == null || !"ADMIN".equals(user.role())) {
+			throw new ReadingRoomForbiddenException("Admin access is required.");
+		}
 	}
 
 	private Optional<ReadingRoomResponse> findRoomByIdempotencyKey(long userId, String idempotencyKey) {
@@ -560,6 +619,13 @@ public class ReadingRoomService {
 	public static class ReadingRoomNotFoundException extends RuntimeException {
 
 		public ReadingRoomNotFoundException(String message) {
+			super(message);
+		}
+	}
+
+	public static class ReadingRoomForbiddenException extends RuntimeException {
+
+		public ReadingRoomForbiddenException(String message) {
 			super(message);
 		}
 	}

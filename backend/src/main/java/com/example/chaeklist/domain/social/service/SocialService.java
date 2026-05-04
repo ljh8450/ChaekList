@@ -48,9 +48,9 @@ public class SocialService {
 
 	private static final int DEFAULT_LIMIT = 20;
 	private static final int MAX_LIMIT = 50;
-	private static final Set<String> POST_TYPES = Set.of("READ_BOOK", "SAVED_BOOK", "RECOMMENDED_BOOK", "READING_GROWTH", "BADGE", "TEXT");
+	private static final Set<String> POST_TYPES = Set.of("READ_BOOK", "SAVED_BOOK", "RECOMMENDED_BOOK", "READING_GROWTH", "BADGE", "TEXT", "READING_ROOM");
 	private static final Set<String> VISIBILITIES = Set.of("PRIVATE", "PUBLIC");
-	private static final Set<String> REPORT_TARGET_TYPES = Set.of("POST", "USER_NICKNAME");
+	private static final Set<String> REPORT_TARGET_TYPES = Set.of("POST", "USER_NICKNAME", "READING_ROOM");
 	private static final Set<String> REPORT_REASONS = Set.of("SPAM", "ABUSE", "INAPPROPRIATE_NICKNAME", "INAPPROPRIATE_CONTENT", "OTHER");
 	private static final Set<String> FEED_SORTS = Set.of("LATEST", "LIKES");
 	private static final Set<String> REPORT_STATUSES = Set.of("PENDING", "REVIEWED", "REJECTED");
@@ -1042,6 +1042,7 @@ public class SocialService {
 			case "READ_BOOK" -> validateInteractionOwner(userId, bookId, sourceInteractionId, "READ");
 			case "SAVED_BOOK" -> validateSavedBook(userId, bookId, sourceInteractionId);
 			case "RECOMMENDED_BOOK" -> validateRecommendationOwner(userId, recommendationId, bookId);
+			case "READING_ROOM" -> validateCompletedReadingRoom(userId, sourceInteractionId);
 			case "READING_GROWTH", "BADGE", "TEXT" -> {
 			}
 			default -> throw new SocialRequestException("Unsupported post type.");
@@ -1118,6 +1119,24 @@ public class SocialService {
 		}
 	}
 
+	private void validateCompletedReadingRoom(long userId, Long readingRoomId) {
+		if (readingRoomId == null) {
+			throw new SocialRequestException("Reading room id is required.");
+		}
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM reading_room_participants participant
+				JOIN reading_rooms room ON room.id = participant.room_id
+				WHERE participant.room_id = ?
+					AND participant.user_id = ?
+					AND participant.status = 'COMPLETED'
+					AND room.status <> 'CANCELED'
+				""", Integer.class, readingRoomId, userId);
+		if (count == null || count == 0) {
+			throw new SocialRequestException("Reading room completion is required.");
+		}
+	}
+
 	private void validateMediaOwnerPost(long userId, long postId) {
 		Integer count = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
@@ -1174,7 +1193,26 @@ public class SocialService {
 			validatePublicActivePost(targetId);
 			return;
 		}
+		if ("READING_ROOM".equals(targetType)) {
+			validatePublicReadingRoom(targetId);
+			return;
+		}
 		validateActiveUser(targetId);
+	}
+
+	private void validatePublicReadingRoom(long roomId) {
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM reading_rooms room
+				JOIN users host ON host.id = room.host_user_id
+				WHERE room.id = ?
+					AND room.visibility = 'PUBLIC'
+					AND room.status <> 'CANCELED'
+					AND host.status = 'ACTIVE'
+				""", Integer.class, roomId);
+		if (count == null || count == 0) {
+			throw new SocialNotFoundException("Reading room not found.");
+		}
 	}
 
 	private void validateReportDailyLimit(long userId) {

@@ -333,6 +333,21 @@ CREATE TABLE reading_room_checkins (
   )
 ) ENGINE=InnoDB;
 
+CREATE TABLE reading_room_admin_hidden (
+  room_id BIGINT NOT NULL,
+  hidden_by_user_id BIGINT NULL,
+  reason VARCHAR(255) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (room_id),
+  KEY idx_reading_room_admin_hidden_admin_created (hidden_by_user_id, created_at),
+  CONSTRAINT fk_reading_room_admin_hidden_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_admin_hidden_admin
+    FOREIGN KEY (hidden_by_user_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 CREATE TABLE user_notifications (
   id BIGINT NOT NULL AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
