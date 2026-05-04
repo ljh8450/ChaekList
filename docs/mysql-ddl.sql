@@ -348,6 +348,26 @@ CREATE TABLE reading_room_admin_hidden (
     ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE reading_room_notification_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  notification_type VARCHAR(30) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_room_notification_events_room_user_type (room_id, user_id, notification_type),
+  KEY idx_reading_room_notification_events_user_created (user_id, created_at),
+  CONSTRAINT fk_reading_room_notification_events_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_notification_events_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_notification_events_type CHECK (
+    notification_type IN ('READING_ROOM_START', 'READING_ROOM_CHECKIN')
+  )
+) ENGINE=InnoDB;
+
 CREATE TABLE user_notifications (
   id BIGINT NOT NULL AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
