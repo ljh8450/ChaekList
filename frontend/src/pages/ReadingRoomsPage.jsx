@@ -37,7 +37,9 @@ function RoomCard({ room }) {
             {statusLabel(room.status)}
           </span>
           <h2 className="mt-3 text-xl font-bold text-[#1E2A38]">{room.title}</h2>
-          <p className="mt-2 text-sm text-[#6B7280]">{room.book?.title} · {room.book?.author}</p>
+          <p className="mt-2 text-sm text-[#6B7280]">
+            {room.book?.title} · {room.book?.author}
+          </p>
           <p className="mt-3 text-sm leading-6 text-[#6B7280]">{room.description || "설명 없음"}</p>
         </div>
         <div className="shrink-0 text-sm text-[#6B7280] sm:text-right">
@@ -87,6 +89,8 @@ export default function ReadingRoomsPage() {
   const initialBookId = query.get("bookId") ?? "";
   const [rooms, setRooms] = useState([]);
   const [status, setStatus] = useState("");
+  const [filterBookId, setFilterBookId] = useState(initialBookId);
+  const [filterBook, setFilterBook] = useState(null);
   const [selectedBook, setSelectedBook] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [message, setMessage] = useState("");
@@ -102,7 +106,7 @@ export default function ReadingRoomsPage() {
     };
   });
 
-  async function loadRooms(nextStatus = status, nextBookId = selectedBook?.id ?? initialBookId) {
+  async function loadRooms(nextStatus = status, nextBookId = filterBookId) {
     setLoadState("loading");
     setMessage("");
     const params = new URLSearchParams({ limit: "30" });
@@ -130,9 +134,9 @@ export default function ReadingRoomsPage() {
   }
 
   useEffect(() => {
-    loadRooms(status, selectedBook?.id ?? initialBookId);
+    loadRooms(status, filterBookId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, selectedBook?.id, initialBookId, accessToken]);
+  }, [status, filterBookId, accessToken]);
 
   useEffect(() => {
     let ignore = false;
@@ -149,10 +153,11 @@ export default function ReadingRoomsPage() {
         }
         const data = await response.json();
         if (!ignore) {
+          setFilterBook(normalizeBook(data));
           setSelectedBook(normalizeBook(data));
         }
       } catch {
-        // 책 상세로부터 넘어오지 않은 경우는 무시한다.
+        // 책 상세에서 넘어오지 않은 경우는 무시한다.
       }
     }
 
@@ -231,9 +236,6 @@ export default function ReadingRoomsPage() {
             onSelect={(book) => {
               const normalized = normalizeBook(book);
               setSelectedBook(normalized);
-              if (normalized?.id) {
-                setStatus("");
-              }
             }}
             selectedIds={selectedBook?.id ? [selectedBook.id] : []}
             selectedLabel="선택됨"
@@ -282,22 +284,48 @@ export default function ReadingRoomsPage() {
 
       <div className="space-y-5">
         <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
-            <div className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]">
-              {selectedBook ? (
-                <span className="font-semibold text-[#1E2A38]">
-                  {selectedBook.title}
-                  {selectedBook.author ? ` · ${selectedBook.author}` : ""}
-                </span>
-              ) : (
-                <span>전체 모각독</span>
-              )}
+          <div className="rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#6B7280]">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate font-semibold text-[#1E2A38]">
+                {filterBook ? `${filterBook.title}${filterBook.author ? ` · ${filterBook.author}` : ""}` : "모각독 찾기"}
+              </span>
+              {filterBook ? (
+                <button
+                  className="shrink-0 rounded-md border border-[#E5E7EB] px-2 py-1 text-xs font-semibold text-[#6B7280]"
+                  type="button"
+                  onClick={() => {
+                    setFilterBook(null);
+                    setFilterBookId("");
+                  }}
+                >
+                  해제
+                </button>
+              ) : null}
             </div>
-            <select className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
-              {statusOptions.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
+            <BookSearchPanel
+              actionLabel="필터"
+              actionSlot={
+                <select className="w-full shrink-0 rounded-md border border-[#E5E7EB] bg-white px-3 py-3 text-sm sm:w-44" value={status} onChange={(event) => setStatus(event.target.value)}>
+                  {statusOptions.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              }
+              className="mt-3"
+              emptyMessage="검색 결과가 없습니다."
+              floatingResults
+              onSelect={(book) => {
+                const normalized = normalizeBook(book);
+                setFilterBook(normalized);
+                setFilterBookId(normalized?.id ?? "");
+              }}
+              reserveMessageSpace
+              selectedIds={filterBook?.id ? [filterBook.id] : []}
+              selectedLabel="적용됨"
+              title="모각독 검색"
+            />
           </div>
         </div>
 

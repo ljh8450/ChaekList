@@ -165,7 +165,7 @@ export default function ReadingRoomDetailPage() {
           sourceInteractionId: room.id,
           content: shareText.trim() || `${room.title}\n${room.book?.title ?? ""}`.trim(),
           visibility: "PUBLIC",
-          idempotencyKey: `reading-room-share-${room.id}`,
+          idempotencyKey: `reading-room-share-${room.id}-${Date.now()}`,
         }),
       });
       if (response.status === 401) {

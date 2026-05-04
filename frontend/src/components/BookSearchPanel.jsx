@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function normalizeSearchBook(book) {
   return {
@@ -17,10 +17,14 @@ function normalizeSearchBook(book) {
 
 export default function BookSearchPanel({
   actionLabel,
+  actionSlot = null,
+  className = "",
   disabledIds = [],
   emptyMessage = "검색 결과가 없습니다.",
+  floatingResults = false,
   onResults,
   onSelect,
+  reserveMessageSpace = false,
   selectedIds = [],
   selectedLabel = "선택됨",
   title = "책 검색",
@@ -30,9 +34,29 @@ export default function BookSearchPanel({
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const [pendingBookId, setPendingBookId] = useState("");
+  const panelRef = useRef(null);
 
   const disabledIdSet = new Set(disabledIds.map(String));
   const selectedIdSet = new Set(selectedIds.map(String));
+
+  useEffect(() => {
+    if (!floatingResults || results.length === 0) {
+      return undefined;
+    }
+
+    function handleOutsidePointerDown(event) {
+      if (panelRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setResults([]);
+    }
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown);
+    };
+  }, [floatingResults, results.length]);
 
   async function searchBooks() {
     const trimmedQuery = query.trim();
@@ -88,6 +112,9 @@ export default function BookSearchPanel({
 
     try {
       await onSelect(book);
+      if (floatingResults) {
+        setResults([]);
+      }
       setMessage(`${book.title}을 반영했습니다.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "책을 반영하지 못했습니다.");
@@ -97,7 +124,7 @@ export default function BookSearchPanel({
   }
 
   return (
-    <div className="mt-5 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+    <div ref={panelRef} className={`${className || "mt-5"} relative rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-4`}>
       <div className="flex flex-col gap-3 sm:flex-row">
         <label className="min-w-0 flex-1">
           <span className="sr-only">{title}</span>
@@ -118,12 +145,23 @@ export default function BookSearchPanel({
         >
           {status === "loading" ? "검색 중" : "검색"}
         </button>
+        {actionSlot}
       </div>
 
-      {message ? <p className={`mt-3 text-sm ${status === "error" ? "text-red-600" : "text-[#6B7280]"}`}>{message}</p> : null}
+      {reserveMessageSpace ? (
+        <div className="mt-3 min-h-5">
+          {message ? <p className={`text-sm ${status === "error" ? "text-red-600" : "text-[#6B7280]"}`}>{message}</p> : null}
+        </div>
+      ) : message ? (
+        <p className={`mt-3 text-sm ${status === "error" ? "text-red-600" : "text-[#6B7280]"}`}>{message}</p>
+      ) : null}
 
       {results.length > 0 ? (
-        <div className="mt-4 divide-y divide-[#E5E7EB] rounded-md border border-[#E5E7EB] bg-white">
+        <div
+          className={`${
+            floatingResults ? "absolute left-0 right-0 top-full z-10 mt-2 max-h-96 overflow-y-auto" : "mt-4"
+          } divide-y divide-[#E5E7EB] rounded-md border border-[#E5E7EB] bg-white shadow-sm`}
+        >
           {results.map((book) => {
             const isSelected = selectedIdSet.has(String(book.id));
             const isDisabled = disabledIdSet.has(String(book.id));
