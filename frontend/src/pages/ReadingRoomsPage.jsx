@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
+import BookSearchPanel from "../components/BookSearchPanel";
 
 const statusOptions = [
   ["", "전체"],
@@ -66,6 +67,18 @@ function toLocalInputValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function normalizeBook(book) {
+  if (!book) {
+    return null;
+  }
+  return {
+    id: String(book.id ?? book.bookId ?? ""),
+    title: book.title ?? "",
+    author: book.author ?? "",
+    category: book.category ?? book.categoryName ?? "",
+  };
+}
+
 export default function ReadingRoomsPage() {
   const { accessToken, currentUser, logout } = useAuth();
   const location = useLocation();
@@ -74,14 +87,13 @@ export default function ReadingRoomsPage() {
   const initialBookId = query.get("bookId") ?? "";
   const [rooms, setRooms] = useState([]);
   const [status, setStatus] = useState("");
-  const [bookId, setBookId] = useState(initialBookId);
+  const [selectedBook, setSelectedBook] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(() => {
     const start = new Date(Date.now() + 60 * 60 * 1000);
     const end = new Date(Date.now() + 2 * 60 * 60 * 1000);
     return {
-      bookId: initialBookId,
       title: "",
       description: "",
       startAt: toLocalInputValue(start),
@@ -90,7 +102,7 @@ export default function ReadingRoomsPage() {
     };
   });
 
-  async function loadRooms(nextStatus = status, nextBookId = bookId) {
+  async function loadRooms(nextStatus = status, nextBookId = selectedBook?.id ?? initialBookId) {
     setLoadState("loading");
     setMessage("");
     const params = new URLSearchParams({ limit: "30" });
@@ -118,9 +130,38 @@ export default function ReadingRoomsPage() {
   }
 
   useEffect(() => {
-    loadRooms(status, bookId);
+    loadRooms(status, selectedBook?.id ?? initialBookId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, bookId, accessToken]);
+  }, [status, selectedBook?.id, initialBookId, accessToken]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadSelectedBook() {
+      if (!initialBookId) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/books/${initialBookId}`);
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (!ignore) {
+          setSelectedBook(normalizeBook(data));
+        }
+      } catch {
+        // 책 상세로부터 넘어오지 않은 경우는 무시한다.
+      }
+    }
+
+    loadSelectedBook();
+
+    return () => {
+      ignore = true;
+    };
+  }, [initialBookId]);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -132,6 +173,10 @@ export default function ReadingRoomsPage() {
       navigate("/login", { state: { from: location } });
       return;
     }
+    if (!selectedBook?.id) {
+      setMessage("책을 먼저 선택해 주세요.");
+      return;
+    }
     setMessage("");
     try {
       const response = await fetch("/api/reading-rooms", {
@@ -141,7 +186,7 @@ export default function ReadingRoomsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          bookId: Number(form.bookId),
+          bookId: Number(selectedBook.id),
           title: form.title.trim(),
           description: form.description.trim() || null,
           startAt: form.startAt,
@@ -180,10 +225,35 @@ export default function ReadingRoomsPage() {
 
         <form className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm" onSubmit={createRoom}>
           <h2 className="text-lg font-bold text-[#1E2A38]">방 만들기</h2>
-          <label className="mt-4 block text-sm font-semibold text-[#1E2A38]">
-            책 ID
-            <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" required value={form.bookId} onChange={(event) => updateForm("bookId", event.target.value)} />
-          </label>
+          <BookSearchPanel
+            actionLabel="선택"
+            emptyMessage="검색 결과가 없습니다."
+            onSelect={(book) => {
+              const normalized = normalizeBook(book);
+              setSelectedBook(normalized);
+              if (normalized?.id) {
+                setStatus("");
+              }
+            }}
+            selectedIds={selectedBook?.id ? [selectedBook.id] : []}
+            selectedLabel="선택됨"
+            title="책 검색"
+          />
+          {selectedBook ? (
+            <div className="mt-4 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-sm text-[#1E2A38]">
+              <p className="font-semibold">{selectedBook.title}</p>
+              <p className="mt-1 text-[#6B7280]">{selectedBook.author}</p>
+              <button
+                className="mt-3 rounded-md border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#6B7280]"
+                type="button"
+                onClick={() => setSelectedBook(null)}
+              >
+                선택 해제
+              </button>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[#6B7280]">책 제목을 검색해 선택해 주세요.</p>
+          )}
           <label className="mt-3 block text-sm font-semibold text-[#1E2A38]">
             제목
             <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" maxLength={100} required value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
@@ -204,7 +274,7 @@ export default function ReadingRoomsPage() {
             최대 인원
             <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" max="30" min="2" required type="number" value={form.maxParticipants} onChange={(event) => updateForm("maxParticipants", event.target.value)} />
           </label>
-          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={!accessToken} type="submit">
+          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={!accessToken || !selectedBook} type="submit">
             모각독 열기
           </button>
         </form>
@@ -213,7 +283,16 @@ export default function ReadingRoomsPage() {
       <div className="space-y-5">
         <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
-            <input className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" placeholder="책 ID로 필터" value={bookId} onChange={(event) => setBookId(event.target.value)} />
+            <div className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]">
+              {selectedBook ? (
+                <span className="font-semibold text-[#1E2A38]">
+                  {selectedBook.title}
+                  {selectedBook.author ? ` · ${selectedBook.author}` : ""}
+                </span>
+              ) : (
+                <span>전체 모각독</span>
+              )}
+            </div>
             <select className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
               {statusOptions.map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>

@@ -32,6 +32,9 @@ export default function ReadingRoomDetailPage() {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState("");
+  const [shareText, setShareText] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
+  const [sharing, setSharing] = useState(false);
 
   async function loadRoom() {
     setStatus("loading");
@@ -143,6 +146,46 @@ export default function ReadingRoomDetailPage() {
     }
   }
 
+  async function shareReadingRoom() {
+    if (!room?.myParticipationStatus || room.myParticipationStatus !== "COMPLETED") {
+      setShareMessage("인증을 완료한 뒤에만 공유할 수 있습니다.");
+      return;
+    }
+    setSharing(true);
+    setShareMessage("");
+    try {
+      const response = await fetch("/api/social/posts", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          postType: "READING_ROOM",
+          sourceInteractionId: room.id,
+          content: shareText.trim() || `${room.title}\n${room.book?.title ?? ""}`.trim(),
+          visibility: "PUBLIC",
+          idempotencyKey: `reading-room-share-${room.id}`,
+        }),
+      });
+      if (response.status === 401) {
+        logout();
+        navigate("/login", { state: { from: location } });
+        return;
+      }
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message || "모각독 공유에 실패했습니다.");
+      }
+      setShareMessage("모각독이 공유되었습니다.");
+      setShareText("");
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : "모각독 공유에 실패했습니다.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
   if (status === "loading") {
     return <section className="mx-auto w-full max-w-5xl px-5 py-8"><div className="rounded-lg border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280]">모각독 방을 불러오는 중입니다.</div></section>;
   }
@@ -196,6 +239,38 @@ export default function ReadingRoomDetailPage() {
           </label>
           <button className="mt-4 rounded-md bg-[#4CAF50] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={pending === "checkin" || (!note.trim() && !progress.trim())} type="submit">인증 완료</button>
         </form>
+      ) : null}
+
+      {room.myParticipationStatus === "COMPLETED" ? (
+        <section className="mt-5 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#4CAF50]">공유하기</p>
+              <h2 className="mt-1 text-xl font-bold text-[#1E2A38]">모각독 인증 게시물</h2>
+            </div>
+          </div>
+          <textarea
+            className="mt-4 min-h-24 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm"
+            maxLength={1000}
+            value={shareText}
+            onChange={(event) => setShareText(event.target.value)}
+            placeholder={`${room.title}\n${room.book?.title ?? ""}`}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              disabled={sharing}
+              type="button"
+              onClick={shareReadingRoom}
+            >
+              모각독 공유
+            </button>
+            <Link className="rounded-md border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#1E2A38]" to="/social">
+              피드 보기
+            </Link>
+          </div>
+          {shareMessage ? <p className="mt-3 text-sm font-medium text-[#6B7280]">{shareMessage}</p> : null}
+        </section>
       ) : null}
     </section>
   );
