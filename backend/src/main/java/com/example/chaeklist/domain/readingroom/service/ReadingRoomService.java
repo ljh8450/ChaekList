@@ -302,15 +302,47 @@ public class ReadingRoomService {
 					INSERT INTO reading_room_participants (room_id, user_id, status, joined_at)
 					VALUES (?, ?, 'JOINED', CURRENT_TIMESTAMP(6))
 					""", roomId, user.id());
+			createParticipantNotification(room, user);
 		} catch (DuplicateKeyException exception) {
-			jdbcTemplate.update("""
+			int updated = jdbcTemplate.update("""
 					UPDATE reading_room_participants
 					SET status = 'JOINED', joined_at = CURRENT_TIMESTAMP(6), canceled_at = NULL
 					WHERE room_id = ?
 						AND user_id = ?
 						AND status = 'CANCELED'
 					""", roomId, user.id());
+			if (updated > 0) {
+				createParticipantNotification(room, user);
+			}
 		}
+	}
+
+	private void createParticipantNotification(ReadingRoomResponse room, AuthenticatedUser participant) {
+		if (room.hostUserId() == participant.id() || !isServiceNotificationEnabled(room.hostUserId())) {
+			return;
+		}
+		jdbcTemplate.update("""
+				INSERT INTO user_notifications (
+					user_id, notification_type, target_type, target_id, title, message, created_at
+				)
+				VALUES (?, 'SERVICE', 'SERVICE', ?, ?, ?, CURRENT_TIMESTAMP(6))
+				""",
+				room.hostUserId(),
+				room.id(),
+				"모각독 새 참여자 알림",
+				participant.nickname() + "님이 '" + room.title() + "' 모각독에 참여했습니다."
+		);
+	}
+
+	private boolean isServiceNotificationEnabled(long userId) {
+		Boolean enabled = jdbcTemplate.queryForObject("""
+				SELECT COALESCE((
+					SELECT service_notifications_enabled
+					FROM user_notification_settings
+					WHERE user_id = ?
+				), TRUE)
+				""", Boolean.class, userId);
+		return Boolean.TRUE.equals(enabled);
 	}
 
 	private Optional<ReadingRoomResponse> findRoom(AuthenticatedUser user, long roomId) {
