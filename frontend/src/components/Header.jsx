@@ -6,6 +6,7 @@ const navItems = [
   { label: "홈", to: "/" },
   { label: "랭킹", to: "/rankings" },
   { label: "카테고리", to: "/categories" },
+  { label: "모각독", to: "/reading-rooms" },
   { label: "피드", to: "/social" },
 ];
 

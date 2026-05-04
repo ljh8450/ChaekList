@@ -12,6 +12,9 @@ import NotificationsPage from "./pages/NotificationsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import PublicProfilePage from "./pages/PublicProfilePage";
 import RankingsPage from "./pages/RankingsPage";
+import MyReadingRoomsPage from "./pages/MyReadingRoomsPage";
+import ReadingRoomDetailPage from "./pages/ReadingRoomDetailPage";
+import ReadingRoomsPage from "./pages/ReadingRoomsPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
@@ -88,6 +91,8 @@ function AppRoutes() {
           <Route element={<RankingsPage />} path="/rankings" />
           <Route element={<CategoriesPage />} path="/categories" />
           <Route element={<BookDetailPage />} path="/books/:bookId" />
+          <Route element={<ReadingRoomsPage />} path="/reading-rooms" />
+          <Route element={<ReadingRoomDetailPage />} path="/reading-rooms/:roomId" />
           <Route element={<SocialFeedPage />} path="/social" />
           <Route element={<SearchResultsPage />} path="/search" />
           <Route element={<PublicProfilePage />} path="/users/:userId" />
@@ -106,6 +111,14 @@ function AppRoutes() {
               </RequireAuth>
             }
             path="/mypage"
+          />
+          <Route
+            element={
+              <RequireAuth>
+                <MyReadingRoomsPage />
+              </RequireAuth>
+            }
+            path="/me/reading-rooms"
           />
           <Route
             element={

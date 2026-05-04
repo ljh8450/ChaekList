@@ -146,6 +146,31 @@ function ReadingGuideSection({ readingGuide }) {
   );
 }
 
+function formatRoomTime(value) {
+  if (!value) {
+    return "";
+  }
+  return new Date(value).toLocaleString("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function roomStatusLabel(status) {
+  if (status === "RECRUITING") {
+    return "모집 중";
+  }
+  if (status === "IN_PROGRESS") {
+    return "진행 중";
+  }
+  if (status === "ENDED") {
+    return "종료";
+  }
+  return status ?? "";
+}
+
 export default function BookDetailPage() {
   const { bookId } = useParams();
   const location = useLocation();
@@ -168,6 +193,8 @@ export default function BookDetailPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const [detailImageFailed, setDetailImageFailed] = useState(false);
+  const [readingRooms, setReadingRooms] = useState([]);
+  const [readingRoomsStatus, setReadingRoomsStatus] = useState("idle");
 
   useEffect(() => {
     let ignore = false;
@@ -225,6 +252,40 @@ export default function BookDetailPage() {
   useEffect(() => {
     setDetailImageFailed(false);
   }, [book?.imageUrl]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadReadingRooms() {
+      setReadingRoomsStatus("loading");
+      try {
+        const response = await fetch(`/api/books/${bookId}/reading-rooms?limit=5`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        });
+        if (!response.ok) {
+          throw new Error("Reading rooms unavailable.");
+        }
+        const data = await response.json();
+        if (!ignore) {
+          setReadingRooms(Array.isArray(data) ? data : []);
+          setReadingRoomsStatus("ready");
+        }
+      } catch {
+        if (!ignore) {
+          setReadingRooms([]);
+          setReadingRoomsStatus("error");
+        }
+      }
+    }
+
+    if (isAuthReady) {
+      loadReadingRooms();
+    }
+
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, bookId, isAuthReady]);
 
   async function saveInteraction(type) {
     if (!accessToken || !currentUser) {
@@ -418,6 +479,40 @@ export default function BookDetailPage() {
           <ReadingGuideSection readingGuide={book.readingGuide} />
         </div>
       ) : null}
+
+      <section className="mt-6 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#4CAF50]">함께 읽기</p>
+            <h2 className="mt-1 text-xl font-bold text-[#1E2A38]">이 책의 모각독</h2>
+          </div>
+          <Link className="rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white" to={`/reading-rooms?bookId=${bookId}`}>
+            이 책으로 모각독 열기
+          </Link>
+        </div>
+        {readingRoomsStatus === "loading" ? (
+          <p className="mt-4 text-sm text-[#6B7280]">모각독을 불러오는 중입니다.</p>
+        ) : null}
+        {readingRoomsStatus !== "loading" && readingRooms.length === 0 ? (
+          <p className="mt-4 text-sm text-[#6B7280]">아직 예정된 모각독이 없습니다.</p>
+        ) : null}
+        {readingRooms.length > 0 ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {readingRooms.map((room) => (
+              <Link className="rounded-md border border-[#E5E7EB] p-4 transition hover:border-[#1E2A38]" key={room.id} to={`/reading-rooms/${room.id}`}>
+                <span className="rounded-full bg-[#4CAF50]/10 px-3 py-1 text-xs font-semibold text-[#2E7D32]">
+                  {roomStatusLabel(room.status)}
+                </span>
+                <h3 className="mt-3 text-base font-bold text-[#1E2A38]">{room.title}</h3>
+                <p className="mt-2 text-sm text-[#6B7280]">{formatRoomTime(room.startAt)} ~ {formatRoomTime(room.endAt)}</p>
+                <p className="mt-2 text-sm font-semibold text-[#1E2A38]">
+                  {room.participantCount}/{room.maxParticipants}명
+                </p>
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       {similarBooks.length ? (
         <section className="mt-6">
