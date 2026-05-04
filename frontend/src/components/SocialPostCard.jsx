@@ -7,6 +7,7 @@ const postLabels = {
   RECOMMENDED_BOOK: "추천 발견 공유",
   READING_GROWTH: "독서 성장 카드",
   BADGE: "배지 공유",
+  READING_ROOM: "모각독 공유",
   TEXT: "자유 기록",
 };
 

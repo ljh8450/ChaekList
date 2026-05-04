@@ -8,3 +8,7 @@ spring:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
+chaeklist:
+  reading-room:
+    notifications:
+      initial-delay-ms: 3600000

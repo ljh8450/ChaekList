@@ -250,6 +250,124 @@ CREATE TABLE feed_items (
   )
 ) ENGINE=InnoDB;
 
+CREATE TABLE reading_rooms (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  host_user_id BIGINT NOT NULL,
+  book_id BIGINT NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  description VARCHAR(500) NULL,
+  start_at DATETIME(6) NOT NULL,
+  end_at DATETIME(6) NOT NULL,
+  max_participants INT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'RECRUITING',
+  visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC',
+  idempotency_key VARCHAR(100) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_rooms_host_idempotency (host_user_id, idempotency_key),
+  KEY idx_reading_rooms_book_start (book_id, start_at),
+  KEY idx_reading_rooms_status_start (status, start_at),
+  KEY idx_reading_rooms_host_start (host_user_id, start_at),
+  CONSTRAINT fk_reading_rooms_host
+    FOREIGN KEY (host_user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_rooms_book
+    FOREIGN KEY (book_id) REFERENCES books (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_rooms_status CHECK (
+    status IN ('RECRUITING', 'IN_PROGRESS', 'ENDED', 'CANCELED')
+  ),
+  CONSTRAINT chk_reading_rooms_visibility CHECK (
+    visibility IN ('PUBLIC')
+  ),
+  CONSTRAINT chk_reading_rooms_time CHECK (
+    end_at > start_at
+  ),
+  CONSTRAINT chk_reading_rooms_max_participants CHECK (
+    max_participants BETWEEN 2 AND 30
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_participants (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'JOINED',
+  joined_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  canceled_at DATETIME(6) NULL,
+  completed_at DATETIME(6) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_room_participants_room_user (room_id, user_id),
+  KEY idx_reading_room_participants_user_status (user_id, status),
+  KEY idx_reading_room_participants_room_status (room_id, status),
+  CONSTRAINT fk_reading_room_participants_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_participants_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_participants_status CHECK (
+    status IN ('JOINED', 'CANCELED', 'COMPLETED')
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_checkins (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  note VARCHAR(300) NULL,
+  progress VARCHAR(100) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_room_checkins_room_user (room_id, user_id),
+  KEY idx_reading_room_checkins_user_created (user_id, created_at),
+  CONSTRAINT fk_reading_room_checkins_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_checkins_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_checkins_content CHECK (
+    note IS NOT NULL OR progress IS NOT NULL
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_admin_hidden (
+  room_id BIGINT NOT NULL,
+  hidden_by_user_id BIGINT NULL,
+  reason VARCHAR(255) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (room_id),
+  KEY idx_reading_room_admin_hidden_admin_created (hidden_by_user_id, created_at),
+  CONSTRAINT fk_reading_room_admin_hidden_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_admin_hidden_admin
+    FOREIGN KEY (hidden_by_user_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_notification_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  notification_type VARCHAR(30) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_room_notification_events_room_user_type (room_id, user_id, notification_type),
+  KEY idx_reading_room_notification_events_user_created (user_id, created_at),
+  CONSTRAINT fk_reading_room_notification_events_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_notification_events_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_notification_events_type CHECK (
+    notification_type IN ('READING_ROOM_START', 'READING_ROOM_CHECKIN')
+  )
+) ENGINE=InnoDB;
+
 CREATE TABLE user_notifications (
   id BIGINT NOT NULL AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
