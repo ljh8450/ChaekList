@@ -1,13 +1,20 @@
 package com.example.chaeklist;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,6 +73,38 @@ class SocialControllerTest {
 
 	@Test
 	@Transactional
+	void filtersAndSortsPublicFeed() throws Exception {
+		createSocialTables();
+		long userId = userId();
+		long textPostId = insertPublicTextPostAt(userId, "최신 자유 글", "2026-04-27 10:00:00");
+		long growthPostId = insertPostAt(userId, "좋아요 많은 성장 카드", "PUBLIC", "READING_GROWTH", "2026-04-26 10:00:00");
+		insertPostLike(growthPostId, 90001);
+		insertPostLike(growthPostId, 90002);
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("sort", "latest"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is((int) textPostId)))
+				.andExpect(jsonPath("$[1].id", is((int) growthPostId)));
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("sort", "likes"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].id", is((int) growthPostId)))
+				.andExpect(jsonPath("$[0].likeCount", is(2)))
+				.andExpect(jsonPath("$[1].id", is((int) textPostId)));
+
+		mockMvc.perform(get("/api/social/feed")
+						.param("type", "TEXT"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is((int) textPostId)));
+	}
+
+	@Test
+	@Transactional
 	void likesAreIdempotent() throws Exception {
 		createSocialTables();
 		String accessToken = loginAndExtractAccessToken();
@@ -101,6 +141,215 @@ class SocialControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].likedByMe", is(false)))
 				.andExpect(jsonPath("$[0].likeCount", is(0)));
+	}
+
+	@Test
+	@Transactional
+	void createsLikeNotificationAndMarksItRead() throws Exception {
+		createSocialTables();
+		String ownerAccessToken = loginAndExtractAccessToken();
+		String likerAccessToken = signupAndExtractAccessToken("liker@chaeklist.kr", "kind-liker");
+		long postId = insertPublicTextPost(userId(), "알림을 받을 공개 기록");
+
+		mockMvc.perform(post("/api/social/posts/{postId}/likes", postId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + likerAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.liked", is(true)));
+
+		String responseBody = mockMvc.perform(get("/api/me/notifications")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].notificationType", is("LIKE")))
+				.andExpect(jsonPath("$[0].targetType", is("POST")))
+				.andExpect(jsonPath("$[0].targetId", is((int) postId)))
+				.andExpect(jsonPath("$[0].read", is(false)))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long notificationId = objectMapper.readTree(responseBody).get(0).get("id").asLong();
+		mockMvc.perform(patch("/api/me/notifications/{notificationId}/read", notificationId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) notificationId)))
+				.andExpect(jsonPath("$.read", is(true)));
+	}
+
+	@Test
+	@Transactional
+	void uploadsPostMediaAndReturnsItFromFeed() throws Exception {
+		createSocialTables();
+		String accessToken = loginAndExtractAccessToken();
+		long postId = insertPublicTextPost(userId(), "이미지를 붙일 공개 기록");
+		MockMultipartFile file = new MockMultipartFile(
+				"file",
+				"note.png",
+				"image/png",
+				new byte[] { 1, 2, 3 }
+		);
+
+		String uploadBody = mockMvc.perform(multipart("/api/social/posts/{postId}/media", postId)
+						.file(file)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.postId", is((int) postId)))
+				.andExpect(jsonPath("$.fileName", is("note.png")))
+				.andExpect(jsonPath("$.contentType", is("image/png")))
+				.andExpect(jsonPath("$.sizeBytes", is(3)))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long mediaId = objectMapper.readTree(uploadBody).get("id").asLong();
+		mockMvc.perform(get("/api/social/posts/{postId}/media/{mediaId}", postId, mediaId))
+				.andExpect(status().isOk())
+				.andExpect(content().contentType("image/png"))
+				.andExpect(content().bytes(new byte[] { 1, 2, 3 }));
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].media", hasSize(1)))
+				.andExpect(jsonPath("$[0].media[0].id", is((int) mediaId)))
+				.andExpect(jsonPath("$[0].media[0].url", is("/api/social/posts/" + postId + "/media/" + mediaId)));
+	}
+
+	@Test
+	@Transactional
+	void adminReviewsReportsAndTogglesHiddenPost() throws Exception {
+		createSocialTables();
+		String reporterAccessToken = loginAndExtractAccessToken();
+		String adminAccessToken = insertAdminAndExtractAccessToken("admin@chaeklist.kr", "admin-reader");
+		long userId = userId();
+		long postId = insertPublicTextPost(userId, "관리자 검토 대상 기록");
+
+		mockMvc.perform(post("/api/social/posts/{postId}/reports", postId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + reporterAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "reason": "SPAM",
+								  "detail": "반복 홍보로 보여요."
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("PENDING")));
+
+		String reportsBody = mockMvc.perform(get("/api/admin/social/reports")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].targetType", is("POST")))
+				.andExpect(jsonPath("$[0].targetId", is((int) postId)))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long reportId = objectMapper.readTree(reportsBody).get(0).get("id").asLong();
+		mockMvc.perform(patch("/api/admin/social/reports/{reportId}", reportId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "status": "REVIEWED"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("REVIEWED")));
+
+		mockMvc.perform(get("/api/me/notifications")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + reporterAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].notificationType", is("REPORT_STATUS")))
+				.andExpect(jsonPath("$[0].targetType", is("REPORT")))
+				.andExpect(jsonPath("$[0].targetId", is((int) reportId)))
+				.andExpect(jsonPath("$[0].read", is(false)));
+
+		mockMvc.perform(post("/api/admin/social/posts/{postId}/hide", postId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "reason": "신고 검토 후 숨김"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) postId)));
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
+
+		mockMvc.perform(delete("/api/admin/social/posts/{postId}/hide", postId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is((int) postId)));
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)));
+	}
+
+	@Test
+	@Transactional
+	void adminAddsReportMemoNicknameActionAndCreatesServiceNotification() throws Exception {
+		createSocialTables();
+		String reporterAccessToken = loginAndExtractAccessToken();
+		String adminAccessToken = insertAdminAndExtractAccessToken("notice-admin@chaeklist.kr", "notice-admin");
+		long reportedUserId = insertUser("reported@chaeklist.kr", "bad-nickname");
+
+		String reportBody = mockMvc.perform(post("/api/users/{userId}/reports", reportedUserId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + reporterAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "reason": "INAPPROPRIATE_NICKNAME",
+								  "detail": "닉네임이 부적절합니다."
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		long reportId = objectMapper.readTree(reportBody).get("id").asLong();
+		mockMvc.perform(patch("/api/admin/social/reports/{reportId}", reportId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "status": "REVIEWED",
+								  "memo": "닉네임 변경 요청 대상",
+								  "nicknameAction": "REQUIRE_CHANGE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("REVIEWED")));
+
+		mockMvc.perform(get("/api/admin/social/reports/{reportId}/events", reportId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].eventType", is("STATUS_CHANGED")))
+				.andExpect(jsonPath("$[0].memo", is("닉네임 변경 요청 대상")))
+				.andExpect(jsonPath("$[1].eventType", is("NICKNAME_REQUIRE_CHANGE")));
+
+		mockMvc.perform(post("/api/admin/notifications/service")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminAccessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "audience": "USER",
+								  "userId": %d,
+								  "title": "서비스 공지",
+								  "message": "닉네임 정책을 확인해주세요."
+								}
+								""".formatted(reportedUserId)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.audience", is("USER")))
+				.andExpect(jsonPath("$.userId", is((int) reportedUserId)))
+				.andExpect(jsonPath("$.deliveredCount", is(1)));
 	}
 
 	@Test
@@ -184,7 +433,64 @@ class SocialControllerTest {
 						.param("query", "quiet"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(1)))
-				.andExpect(jsonPath("$[0].summary", is("공개 게시글 1개")));
+				.andExpect(jsonPath("$[0].summary", containsString("공개 게시글 1개")));
+	}
+
+	@Test
+	@Transactional
+	void improvesPublicUserSearchSummaryAndOrdering() throws Exception {
+		createSocialTables();
+		createUserPublicProfilesTable();
+		long userId = userId();
+		long directMatchUserId = insertUser("direct@chaeklist.kr", "quiet");
+		insertPublicTextPostAt(userId, "quiet 독서 모임 기록", "2026-04-25 10:00:00");
+		insertPublicTextPostAt(userId, "quiet 검색 보조 기록", "2026-04-26 10:00:00");
+		insertPublicTextPostAt(directMatchUserId, "직접 매칭 유저 공개 기록", "2026-04-20 10:00:00");
+		insertPublicProfile(directMatchUserId);
+		insertCategory(9901, "경제", "test-economy", 1);
+		insertCategory(9902, "철학", "test-philosophy", 2);
+		setInterestsPublic(directMatchUserId);
+		insertUserInterest(directMatchUserId, 9901);
+		insertUserInterest(directMatchUserId, 9902);
+
+		mockMvc.perform(get("/api/search/users")
+						.param("query", "quiet"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].title", is("quiet")))
+				.andExpect(jsonPath("$[0].summary", containsString("공개 게시글 1개")))
+				.andExpect(jsonPath("$[0].summary", containsString("관심 분야 경제, 철학")))
+				.andExpect(jsonPath("$[0].summary", containsString("최근 활동 2026-04-20")))
+				.andExpect(jsonPath("$[1].title", is("quiet-reader")))
+				.andExpect(jsonPath("$[1].summary", containsString("공개 게시글 2개")))
+				.andExpect(jsonPath("$[1].summary", containsString("최근 활동 2026-04-26")));
+	}
+
+	@Test
+	@Transactional
+	void returnsPublicProfilePostsOnly() throws Exception {
+		createSocialTables();
+		createUserPublicProfilesTable();
+		long userId = userId();
+		insertPublicTextPost(userId, "프로필 공개 기록");
+		insertPost(userId, "성장 카드 공개 기록", "PUBLIC", "READING_GROWTH");
+		insertPrivateTextPost(userId, "프로필 비공개 기록");
+		long hiddenPostId = insertPublicTextPost(userId, "프로필 숨김 기록");
+		hidePost(hiddenPostId);
+
+		mockMvc.perform(get("/api/users/{userId}/social/posts", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 공개 기록')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.content == '성장 카드 공개 기록')]", hasSize(1)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 비공개 기록')]", hasSize(0)))
+				.andExpect(jsonPath("$[?(@.content == '프로필 숨김 기록')]", hasSize(0)));
+
+		mockMvc.perform(get("/api/users/{userId}/social/posts", userId)
+						.param("type", "TEXT"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].content", is("프로필 공개 기록")));
 	}
 
 	@Test
@@ -313,6 +619,63 @@ class SocialControllerTest {
 		return response.get("accessToken").asText();
 	}
 
+	private String signupAndExtractAccessToken(String email, String nickname) throws Exception {
+		String responseBody = mockMvc.perform(post("/api/auth/signup")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "nickname": "%s",
+								  "password": "chaeklist123"
+								}
+								""".formatted(email, nickname)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		JsonNode response = objectMapper.readTree(responseBody);
+		return response.get("accessToken").asText();
+	}
+
+	private String insertAdminAndExtractAccessToken(String email, String nickname) throws Exception {
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, ?, 'ACTIVE', 'ADMIN', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", email, nickname, hashPassword("chaeklist123"));
+		String responseBody = mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "email": "%s",
+								  "password": "chaeklist123"
+								}
+								""".formatted(email)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		JsonNode response = objectMapper.readTree(responseBody);
+		return response.get("accessToken").asText();
+	}
+
+	private String hashPassword(String password) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+			StringBuilder builder = new StringBuilder(bytes.length * 2);
+			for (byte value : bytes) {
+				builder.append(String.format("%02x", value));
+			}
+			return builder.toString();
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("Password hashing is unavailable.", exception);
+		}
+	}
+
 	private long userId() {
 		return jdbcTemplate.queryForObject(
 				"SELECT id FROM users WHERE email = ?",
@@ -329,15 +692,37 @@ class SocialControllerTest {
 		return insertTextPost(userId, content, "PRIVATE");
 	}
 
+	private long insertPublicTextPostAt(long userId, String content, String createdAt) {
+		return insertPostAt(userId, content, "PUBLIC", "TEXT", createdAt);
+	}
+
 	private long insertTextPost(long userId, String content, String visibility) {
+		return insertPost(userId, content, visibility, "TEXT");
+	}
+
+	private long insertPost(long userId, String content, String visibility, String postType) {
+		return insertPostAt(userId, content, visibility, postType, null);
+	}
+
+	private long insertPostAt(long userId, String content, String visibility, String postType, String createdAt) {
 		jdbcTemplate.update("""
 				INSERT INTO social_posts (
 					user_id, author_snapshot_nickname, author_anonymized, post_type,
 					visibility, status, content, created_at, updated_at
 				)
-				VALUES (?, '책리더', FALSE, 'TEXT', ?, 'ACTIVE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-				""", userId, visibility, content);
+				VALUES (?, '책리더', FALSE, ?, ?, 'ACTIVE', ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+				""", userId, postType, visibility, content, createdAt, createdAt);
 		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM social_posts", Long.class);
+	}
+
+	private long insertUser(String email, String nickname) {
+		jdbcTemplate.update("""
+				INSERT INTO users (
+					email, nickname, password_hash, status, role, onboarding_completed, created_at, updated_at
+				)
+				VALUES (?, ?, 'test-hash', 'ACTIVE', 'USER', FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", email, nickname);
+		return jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Long.class, email);
 	}
 
 	private void insertInteraction(long userId, long bookId, String interactionType, String createdAt) {
@@ -365,6 +750,38 @@ class SocialControllerTest {
 				)
 				VALUES (?, 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PUBLIC', 'PRIVATE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", userId);
+	}
+
+	private void setInterestsPublic(long userId) {
+		jdbcTemplate.update("DELETE FROM user_privacy_settings WHERE user_id = ?", userId);
+		jdbcTemplate.update("""
+				INSERT INTO user_privacy_settings (
+					user_id, read_books_visibility, saved_books_visibility, reading_growth_visibility,
+					badges_visibility, interest_categories_visibility, created_at, updated_at
+				)
+				VALUES (?, 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PRIVATE', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", userId);
+	}
+
+	private void insertCategory(long id, String name, String slug, int displayOrder) {
+		jdbcTemplate.update("""
+				INSERT INTO categories (id, name, slug, display_order, is_active, created_at, updated_at)
+				VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", id, name, slug, displayOrder);
+	}
+
+	private void insertUserInterest(long userId, long categoryId) {
+		jdbcTemplate.update("""
+				INSERT INTO user_interest_categories (user_id, category_id, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", userId, categoryId);
+	}
+
+	private void insertPostLike(long postId, long userId) {
+		jdbcTemplate.update("""
+				INSERT INTO social_post_likes (post_id, user_id, created_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				""", postId, userId);
 	}
 
 	private void hidePost(long postId) {
@@ -429,6 +846,19 @@ class SocialControllerTest {
 				)
 				""");
 		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS social_post_media (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					post_id BIGINT NOT NULL,
+					uploader_user_id BIGINT NOT NULL,
+					file_name VARCHAR(255),
+					content_type VARCHAR(100) NOT NULL,
+					size_bytes BIGINT NOT NULL,
+					data BLOB NOT NULL,
+					sort_order INT NOT NULL DEFAULT 0,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
 				CREATE TABLE IF NOT EXISTS user_blocks (
 					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
 					blocker_user_id BIGINT NOT NULL,
@@ -446,6 +876,32 @@ class SocialControllerTest {
 				)
 				""");
 		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS social_reports (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					reporter_user_id BIGINT NOT NULL,
+					target_type VARCHAR(30) NOT NULL,
+					target_id BIGINT NOT NULL,
+					reason VARCHAR(50) NOT NULL,
+					detail VARCHAR(500),
+					status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					CONSTRAINT uk_social_reports_reporter_target UNIQUE (reporter_user_id, target_type, target_id)
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS social_report_events (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					report_id BIGINT NOT NULL,
+					admin_user_id BIGINT NOT NULL,
+					event_type VARCHAR(40) NOT NULL,
+					from_status VARCHAR(30),
+					to_status VARCHAR(30),
+					memo VARCHAR(1000),
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
 				CREATE TABLE IF NOT EXISTS user_privacy_settings (
 					user_id BIGINT PRIMARY KEY,
 					read_books_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
@@ -455,6 +911,40 @@ class SocialControllerTest {
 					interest_categories_visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_notification_settings (
+					user_id BIGINT PRIMARY KEY,
+					like_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+					report_status_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+					service_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS user_notifications (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					user_id BIGINT NOT NULL,
+					notification_type VARCHAR(30) NOT NULL,
+					target_type VARCHAR(30) NOT NULL,
+					target_id BIGINT NOT NULL,
+					title VARCHAR(100) NOT NULL,
+					message VARCHAR(255) NOT NULL,
+					read_at DATETIME(6),
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS service_notices (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					created_by_user_id BIGINT NOT NULL,
+					audience VARCHAR(20) NOT NULL,
+					target_user_id BIGINT,
+					title VARCHAR(100) NOT NULL,
+					message VARCHAR(255) NOT NULL,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 				)
 				""");
 		jdbcTemplate.execute("""

@@ -15,13 +15,15 @@ CREATE TABLE users (
   nickname VARCHAR(50) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  role VARCHAR(20) NOT NULL DEFAULT 'USER',
   onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_email (email),
   UNIQUE KEY uk_users_nickname (nickname),
-  CONSTRAINT chk_users_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'DELETED'))
+  CONSTRAINT chk_users_status CHECK (status IN ('ACTIVE', 'INACTIVE', 'DELETED')),
+  CONSTRAINT chk_users_role CHECK (role IN ('USER', 'ADMIN'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE categories (
@@ -245,6 +247,102 @@ CREATE TABLE feed_items (
     ON DELETE SET NULL,
   CONSTRAINT chk_feed_items_type CHECK (
     feed_type IN ('RISING', 'TODAY_RECOMMENDATION', 'THEME_CURATION')
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE user_notifications (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  notification_type VARCHAR(30) NOT NULL,
+  target_type VARCHAR(30) NOT NULL,
+  target_id BIGINT NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  message VARCHAR(255) NOT NULL,
+  read_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_user_notifications_user_created (user_id, created_at),
+  KEY idx_user_notifications_user_read_created (user_id, read_at, created_at),
+  CONSTRAINT fk_user_notifications_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_user_notifications_type CHECK (
+    notification_type IN ('LIKE', 'REPORT_STATUS', 'SERVICE')
+  ),
+  CONSTRAINT chk_user_notifications_target_type CHECK (
+    target_type IN ('POST', 'REPORT', 'SERVICE')
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE social_report_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  report_id BIGINT NOT NULL,
+  admin_user_id BIGINT NOT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  from_status VARCHAR(30) NULL,
+  to_status VARCHAR(30) NULL,
+  memo TEXT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_social_report_events_report_created (report_id, created_at, id),
+  KEY idx_social_report_events_admin_created (admin_user_id, created_at),
+  CONSTRAINT fk_social_report_events_report
+    FOREIGN KEY (report_id) REFERENCES social_reports (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_social_report_events_admin
+    FOREIGN KEY (admin_user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_social_report_events_type CHECK (
+    event_type IN ('STATUS_CHANGED', 'MEMO_ADDED', 'NICKNAME_REQUIRE_CHANGE', 'NICKNAME_DISMISS')
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE service_notices (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  created_by_user_id BIGINT NOT NULL,
+  audience VARCHAR(20) NOT NULL,
+  target_user_id BIGINT NULL,
+  title VARCHAR(100) NOT NULL,
+  message VARCHAR(255) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_service_notices_created (created_at, id),
+  KEY idx_service_notices_target_user (target_user_id, created_at),
+  CONSTRAINT fk_service_notices_creator
+    FOREIGN KEY (created_by_user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_service_notices_target_user
+    FOREIGN KEY (target_user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_service_notices_audience CHECK (
+    audience IN ('ALL', 'USER')
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE social_post_media (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  post_id BIGINT NOT NULL,
+  uploader_user_id BIGINT NOT NULL,
+  file_name VARCHAR(255) NULL,
+  content_type VARCHAR(100) NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  data LONGBLOB NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_social_post_media_post_order (post_id, sort_order, id),
+  KEY idx_social_post_media_uploader_created (uploader_user_id, created_at),
+  CONSTRAINT fk_social_post_media_post
+    FOREIGN KEY (post_id) REFERENCES social_posts (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_social_post_media_uploader
+    FOREIGN KEY (uploader_user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_social_post_media_content_type CHECK (
+    content_type IN ('image/jpeg', 'image/png', 'image/webp')
+  ),
+  CONSTRAINT chk_social_post_media_size CHECK (
+    size_bytes > 0 AND size_bytes <= 2097152
   )
 ) ENGINE=InnoDB;
 

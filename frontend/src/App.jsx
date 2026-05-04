@@ -2,11 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
+import AdminModerationPage from "./pages/AdminModerationPage";
 import BookDetailPage from "./pages/BookDetailPage";
 import CategoriesPage from "./pages/CategoriesPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyPage from "./pages/MyPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import PublicProfilePage from "./pages/PublicProfilePage";
 import RankingsPage from "./pages/RankingsPage";
@@ -112,6 +114,22 @@ function AppRoutes() {
               </RequireAuth>
             }
             path="/settings"
+          />
+          <Route
+            element={
+              <RequireAuth>
+                <NotificationsPage />
+              </RequireAuth>
+            }
+            path="/notifications"
+          />
+          <Route
+            element={
+              <RequireAuth>
+                <AdminModerationPage />
+              </RequireAuth>
+            }
+            path="/admin/moderation"
           />
           <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>

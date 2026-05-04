@@ -57,6 +57,7 @@ public class TokenService {
 				"email", readStringClaim(payload, "email"),
 				"nickname", readStringClaim(payload, "nickname"),
 				"status", readStringClaim(payload, "status"),
+				"role", readStringClaim(payload, "role"),
 				"type", readStringClaim(payload, "type"),
 				"exp", readNumberClaim(payload, "exp")
 		);
@@ -73,7 +74,8 @@ public class TokenService {
 				Long.parseLong(claims.get("sub")),
 				claims.get("email"),
 				claims.get("nickname"),
-				claims.get("status")
+				claims.get("status"),
+				claims.get("role")
 		);
 	}
 
@@ -81,12 +83,13 @@ public class TokenService {
 		Instant now = Instant.now();
 		String encodedHeader = encode(JWT_HEADER);
 		String encodedPayload = encode("""
-				{"sub":"%d","email":"%s","nickname":"%s","status":"%s","type":"%s","iat":%d,"exp":%d,"jti":"%s"}"""
+				{"sub":"%d","email":"%s","nickname":"%s","status":"%s","role":"%s","type":"%s","iat":%d,"exp":%d,"jti":"%s"}"""
 				.formatted(
 						user.id(),
 						escapeJson(user.email()),
 						escapeJson(user.nickname()),
 						escapeJson(user.status()),
+						escapeJson(user.role()),
 						type,
 						now.getEpochSecond(),
 						now.plusSeconds(expiresInSeconds).getEpochSecond(),
