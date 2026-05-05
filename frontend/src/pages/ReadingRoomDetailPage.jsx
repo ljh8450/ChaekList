@@ -10,6 +10,24 @@ function statusLabel(status) {
   return status ?? "";
 }
 
+function participationLabel(status) {
+  if (status === "JOINED") return "참여 중";
+  if (status === "CANCELED") return "취소됨";
+  if (status === "COMPLETED") return "인증 완료";
+  return status ?? "미참여";
+}
+
+function actionNotice(room, currentUser) {
+  if (!currentUser) return "참여와 인증은 로그인 후 이용할 수 있습니다.";
+  if (room.canJoin || room.canCancel || room.canCheckIn) return "";
+  if (room.myParticipationStatus === "COMPLETED") return "인증을 완료한 모각독입니다.";
+  if (room.myParticipationStatus === "CANCELED") return "참여를 취소한 모각독입니다.";
+  if (room.status === "RECRUITING" && room.participantCount >= room.maxParticipants) return "정원이 모두 찼습니다.";
+  if (room.status === "IN_PROGRESS") return "이미 시작된 모각독입니다.";
+  if (room.status === "ENDED") return "종료된 모각독입니다.";
+  return "";
+}
+
 function formatDateTime(value) {
   if (!value) return "";
   return new Date(value).toLocaleString("ko-KR", {
@@ -194,6 +212,8 @@ export default function ReadingRoomDetailPage() {
     return <section className="mx-auto w-full max-w-5xl px-5 py-8"><div className="rounded-lg border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280]">{message}</div></section>;
   }
 
+  const notice = actionNotice(room, currentUser);
+
   return (
     <section className="mx-auto w-full max-w-5xl px-5 py-8">
       <Link className="text-sm font-semibold text-[#6B7280] hover:text-[#1E2A38]" to="/reading-rooms">모각독 목록</Link>
@@ -214,15 +234,17 @@ export default function ReadingRoomDetailPage() {
           <div className="rounded-md border border-[#E5E7EB] p-4">
             <p className="text-xs font-semibold text-[#6B7280]">참여</p>
             <p className="mt-2 text-sm font-bold text-[#1E2A38]">{room.participantCount}/{room.maxParticipants}명</p>
-            <p className="mt-1 text-sm text-[#6B7280]">내 상태 {room.myParticipationStatus || "미참여"}</p>
+            <p className="mt-1 text-sm text-[#6B7280]">내 상태 {participationLabel(room.myParticipationStatus)}</p>
           </div>
         </div>
         <p className="mt-5 leading-7 text-[#111827]">{room.description || "설명 없음"}</p>
         <div className="mt-6 flex flex-wrap gap-2">
+          {!currentUser ? <Link className="rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white" to="/login" state={{ from: location }}>로그인 후 참여</Link> : null}
           {room.canJoin ? <button className="rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={pending === "join"} type="button" onClick={joinRoom}>참여하기</button> : null}
           {room.canCancel ? <button className="rounded-md border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#1E2A38] disabled:opacity-60" disabled={pending === "cancel"} type="button" onClick={cancelParticipation}>참여 취소</button> : null}
           <Link className="rounded-md border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#1E2A38]" to={`/books/${room.book?.id}`}>책 상세</Link>
         </div>
+        {notice ? <p className="mt-4 text-sm font-medium text-[#6B7280]">{notice}</p> : null}
         {message ? <p className="mt-4 text-sm font-medium text-[#6B7280]">{message}</p> : null}
       </div>
 

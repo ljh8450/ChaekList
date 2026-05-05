@@ -18,6 +18,13 @@ function statusLabel(status) {
   return status ?? "";
 }
 
+function participationLabel(status) {
+  if (status === "JOINED") return "참여 중";
+  if (status === "CANCELED") return "취소됨";
+  if (status === "COMPLETED") return "인증 완료";
+  return status ?? "";
+}
+
 function formatDateTime(value) {
   if (!value) return "";
   return new Date(value).toLocaleString("ko-KR", {
@@ -53,7 +60,7 @@ function RoomCard({ room }) {
       <div className="mt-5 flex flex-wrap items-center gap-2">
         {room.myParticipationStatus ? (
           <span className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]">
-            내 상태: {room.myParticipationStatus}
+            내 상태: {participationLabel(room.myParticipationStatus)}
           </span>
         ) : null}
         <Link className="rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white" to={`/reading-rooms/${room.id}`}>
@@ -172,14 +179,38 @@ export default function ReadingRoomsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function validateCreateForm() {
+    const startAt = new Date(form.startAt);
+    const endAt = new Date(form.endAt);
+    const maxParticipants = Number(form.maxParticipants);
+
+    if (!selectedBook?.id) return "책을 먼저 선택해 주세요.";
+    if (!form.title.trim()) return "방 제목을 입력해 주세요.";
+    if (!form.startAt || !form.endAt || Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+      return "시작 시간과 종료 시간을 입력해 주세요.";
+    }
+    if (startAt <= new Date()) return "시작 시간은 현재보다 이후여야 합니다.";
+    if (endAt <= startAt) return "종료 시간은 시작 시간보다 이후여야 합니다.";
+
+    const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60000;
+    if (durationMinutes < 20) return "모각독은 최소 20분 이상이어야 합니다.";
+    if (durationMinutes > 240) return "모각독은 최대 4시간까지 열 수 있습니다.";
+    if (!Number.isInteger(maxParticipants) || maxParticipants < 2 || maxParticipants > 30) {
+      return "최대 인원은 2명에서 30명 사이로 입력해 주세요.";
+    }
+
+    return "";
+  }
+
   async function createRoom(event) {
     event.preventDefault();
-    if (!accessToken || !currentUser) {
-      navigate("/login", { state: { from: location } });
+    const validationMessage = validateCreateForm();
+    if (validationMessage) {
+      setMessage(validationMessage);
       return;
     }
-    if (!selectedBook?.id) {
-      setMessage("책을 먼저 선택해 주세요.");
+    if (!accessToken || !currentUser) {
+      navigate("/login", { state: { from: location } });
       return;
     }
     setMessage("");
@@ -276,8 +307,8 @@ export default function ReadingRoomsPage() {
             최대 인원
             <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" max="30" min="2" required type="number" value={form.maxParticipants} onChange={(event) => updateForm("maxParticipants", event.target.value)} />
           </label>
-          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={!accessToken || !selectedBook} type="submit">
-            모각독 열기
+          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={!selectedBook} type="submit">
+            {accessToken ? "모각독 열기" : "로그인 후 모각독 열기"}
           </button>
         </form>
       </aside>

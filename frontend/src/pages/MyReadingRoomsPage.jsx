@@ -17,6 +17,23 @@ function statusLabel(status) {
   return status ?? "";
 }
 
+function participationLabel(status) {
+  if (status === "JOINED") return "참여 중";
+  if (status === "CANCELED") return "취소됨";
+  if (status === "COMPLETED") return "인증 완료";
+  return status ?? "미참여";
+}
+
+function roomStateLabel(room) {
+  if (room.canCheckIn) return "인증 필요";
+  if (room.myParticipationStatus === "COMPLETED") return "완료";
+  if (room.myParticipationStatus === "CANCELED") return "취소";
+  if (room.status === "RECRUITING") return "진행 예정";
+  if (room.status === "IN_PROGRESS") return "읽는 중";
+  if (room.status === "ENDED") return "종료";
+  return statusLabel(room.status);
+}
+
 function formatDateTime(value) {
   if (!value) return "";
   return new Date(value).toLocaleString("ko-KR", {
@@ -95,7 +112,10 @@ export default function MyReadingRoomsPage() {
               {room.mine ? <span className="rounded-md border border-[#E5E7EB] px-2 py-1 text-xs text-[#6B7280]">방장</span> : null}
             </div>
             <p className="mt-4 text-sm text-[#6B7280]">{formatDateTime(room.startAt)} ~ {formatDateTime(room.endAt)}</p>
-            <p className="mt-2 text-sm text-[#6B7280]">내 상태 {room.myParticipationStatus || "미참여"}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-md bg-[#F9FAFB] px-3 py-2 text-sm font-semibold text-[#1E2A38]">{roomStateLabel(room)}</span>
+              <span className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]">내 상태 {participationLabel(room.myParticipationStatus)}</span>
+            </div>
             {room.canCheckIn ? <p className="mt-3 rounded-md bg-[#F59E0B]/10 px-3 py-2 text-sm font-semibold text-[#9a6207]">인증이 필요합니다.</p> : null}
             <Link className="mt-4 inline-flex rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white" to={`/reading-rooms/${room.id}`}>
               상세 보기
