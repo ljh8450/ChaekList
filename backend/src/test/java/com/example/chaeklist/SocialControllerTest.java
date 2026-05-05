@@ -1,5 +1,6 @@
 package com.example.chaeklist;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
@@ -368,6 +369,51 @@ class SocialControllerTest {
 						.param("query", "비활성화"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
+	@Transactional
+	void withdrawsUserAnonymizesPublicPostsAndRejectsExistingToken() throws Exception {
+		createSocialTables();
+		createUserPublicProfilesTable();
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		long postId = insertPublicTextPost(userId, "탈퇴 후에도 남을 공개 기록");
+		insertPublicProfile(userId);
+
+		mockMvc.perform(post("/api/me/withdraw")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isNoContent());
+
+		UserWithdrawalRow userRow = jdbcTemplate.queryForObject("""
+				SELECT email, nickname, password_hash, status
+				FROM users
+				WHERE id = ?
+				""", (resultSet, rowNumber) -> new UserWithdrawalRow(
+						resultSet.getString("email"),
+						resultSet.getString("nickname"),
+						resultSet.getString("password_hash"),
+						resultSet.getString("status")
+				), userId);
+		assertThat(userRow.email()).isEqualTo("deleted_" + userId + "@deleted.local");
+		assertThat(userRow.nickname()).isEqualTo("deleted_" + userId);
+		assertThat(userRow.passwordHash()).isEmpty();
+		assertThat(userRow.status()).isEqualTo("DELETED");
+
+		mockMvc.perform(get("/api/social/feed"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].id", is((int) postId)))
+				.andExpect(jsonPath("$[0].userId").doesNotExist())
+				.andExpect(jsonPath("$[0].nickname", is("탈퇴한 사용자")))
+				.andExpect(jsonPath("$[0].authorAnonymized", is(true)));
+
+		mockMvc.perform(get("/api/users/{userId}/public-profile", userId))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(get("/api/me/settings")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test
@@ -1127,5 +1173,13 @@ class SocialControllerTest {
 				VALUES (?, ?, ?, '공유 인증', DATEADD('HOUR', -1, CURRENT_TIMESTAMP))
 				""", sessionId, roomId, userId);
 		return roomId;
+	}
+
+	private record UserWithdrawalRow(
+			String email,
+			String nickname,
+			String passwordHash,
+			String status
+	) {
 	}
 }
