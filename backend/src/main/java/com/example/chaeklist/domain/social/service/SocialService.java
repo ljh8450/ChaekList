@@ -1125,11 +1125,10 @@ public class SocialService {
 		}
 		Integer count = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
-				FROM reading_room_participants participant
-				JOIN reading_rooms room ON room.id = participant.room_id
-				WHERE participant.room_id = ?
-					AND participant.user_id = ?
-					AND participant.status = 'COMPLETED'
+				FROM reading_room_checkins checkin
+				JOIN reading_rooms room ON room.id = checkin.room_id
+				WHERE checkin.room_id = ?
+					AND checkin.user_id = ?
 					AND room.status <> 'CANCELED'
 				""", Integer.class, readingRoomId, userId);
 		if (count == null || count == 0) {

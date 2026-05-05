@@ -118,6 +118,26 @@ public class ReadingRoomController {
 		return readingRoomService.joinReadingRoom(authenticate(authorizationHeader), roomId);
 	}
 
+	@PostMapping("/api/reading-rooms/{roomId}/start")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "모각독 시작", description = "방장이 모집 중인 모각독을 진행 중으로 전환합니다.")
+	public ReadingRoomResponse startReadingRoom(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long roomId
+	) {
+		return readingRoomService.startReadingRoom(authenticate(authorizationHeader), roomId);
+	}
+
+	@DeleteMapping("/api/reading-rooms/{roomId}")
+	@SecurityRequirement(name = "bearerAuth")
+	@Operation(summary = "모각독 취소", description = "방장이 시작 전 모각독 방을 취소합니다.")
+	public ReadingRoomResponse cancelReadingRoom(
+			@Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+			@PathVariable long roomId
+	) {
+		return readingRoomService.cancelReadingRoom(authenticate(authorizationHeader), roomId);
+	}
+
 	@DeleteMapping("/api/reading-rooms/{roomId}/participants/me")
 	@SecurityRequirement(name = "bearerAuth")
 	@Operation(summary = "내 모각독 참여 취소", description = "시작 전 모각독 방 참여를 취소합니다.")

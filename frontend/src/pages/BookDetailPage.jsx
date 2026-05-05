@@ -146,16 +146,18 @@ function ReadingGuideSection({ readingGuide }) {
   );
 }
 
-function formatRoomTime(value) {
-  if (!value) {
-    return "";
+function formatRoomSchedule(room) {
+  const schedules = Array.isArray(room.schedules) ? room.schedules : [];
+  if (schedules.length > 0) {
+    return schedules
+      .map((schedule) => {
+        const duration = Number(schedule.durationMinutes ?? 0);
+        const durationLabel = duration >= 60 && duration % 60 === 0 ? `${duration / 60}시간` : `${duration}분`;
+        return `${schedule.dayLabel} ${String(schedule.scheduledTime ?? "").slice(0, 5)} · ${durationLabel}`;
+      })
+      .join(" / ");
   }
-  return new Date(value).toLocaleString("ko-KR", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return "일정 없음";
 }
 
 function roomStatusLabel(status) {
@@ -504,7 +506,7 @@ export default function BookDetailPage() {
                   {roomStatusLabel(room.status)}
                 </span>
                 <h3 className="mt-3 text-base font-bold text-[#1E2A38]">{room.title}</h3>
-                <p className="mt-2 text-sm text-[#6B7280]">{formatRoomTime(room.startAt)} ~ {formatRoomTime(room.endAt)}</p>
+                <p className="mt-2 text-sm text-[#6B7280]">{formatRoomSchedule(room)}</p>
                 <p className="mt-2 text-sm font-semibold text-[#1E2A38]">
                   {room.participantCount}/{room.maxParticipants}명
                 </p>
