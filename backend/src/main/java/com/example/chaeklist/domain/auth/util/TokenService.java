@@ -16,6 +16,8 @@ import javax.crypto.spec.SecretKeySpec;
 import com.example.chaeklist.domain.auth.dto.TokenPair;
 import com.example.chaeklist.domain.auth.entity.UserAccount;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,6 +34,11 @@ public class TokenService {
 
 	private final SecureRandom secureRandom = new SecureRandom();
 	private final byte[] signingKey = createSigningKey();
+	private final JdbcTemplate jdbcTemplate;
+
+	public TokenService(JdbcTemplate jdbcTemplate) {
+		this.jdbcTemplate = jdbcTemplate;
+	}
 
 	public TokenPair issueTokens(UserAccount user) {
 		return new TokenPair(
@@ -70,13 +77,32 @@ public class TokenService {
 			throw new TokenException("Access token expired.");
 		}
 
-		return new AuthenticatedUser(
-				Long.parseLong(claims.get("sub")),
-				claims.get("email"),
-				claims.get("nickname"),
-				claims.get("status"),
-				claims.get("role")
-		);
+		return findActiveUser(Long.parseLong(claims.get("sub")));
+	}
+
+	private AuthenticatedUser findActiveUser(long userId) {
+		try {
+			AuthenticatedUser user = jdbcTemplate.queryForObject("""
+					SELECT id, email, nickname, status, role
+					FROM users
+					WHERE id = ?
+					""",
+					(resultSet, rowNumber) -> new AuthenticatedUser(
+							resultSet.getLong("id"),
+							resultSet.getString("email"),
+							resultSet.getString("nickname"),
+							resultSet.getString("status"),
+							resultSet.getString("role")
+					),
+					userId
+			);
+			if (user == null || !"ACTIVE".equals(user.status())) {
+				throw new TokenException("Active account is required.");
+			}
+			return user;
+		} catch (EmptyResultDataAccessException exception) {
+			throw new TokenException("Active account is required.");
+		}
 	}
 
 	private String createToken(String type, UserAccount user, long expiresInSeconds) {

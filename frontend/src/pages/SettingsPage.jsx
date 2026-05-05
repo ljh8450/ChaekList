@@ -13,6 +13,8 @@ export default function SettingsPage() {
   const [myPosts, setMyPosts] = useState([]);
   const [likedPosts, setLikedPosts] = useState([]);
   const [message, setMessage] = useState("");
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
+  const [withdrawPending, setWithdrawPending] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -109,18 +111,28 @@ export default function SettingsPage() {
   }
 
   async function withdraw() {
-    const confirmed = window.confirm("탈퇴하면 계정은 비활성화되고 기존 공개 게시글 작성자는 익명화됩니다.");
-    if (!confirmed) {
+    if (withdrawPending) {
       return;
     }
-    const response = await fetch("/api/me/withdraw", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      method: "POST",
-    });
-    if (response.ok) {
-      logout();
-    } else {
+    setWithdrawPending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/me/withdraw", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        method: "POST",
+      });
+      if (response.ok || response.status === 401) {
+        logout();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      setMessage(data.message ?? "회원 탈퇴를 처리하지 못했습니다.");
+      setWithdrawConfirmOpen(false);
+    } catch {
       setMessage("회원 탈퇴를 처리하지 못했습니다.");
+      setWithdrawConfirmOpen(false);
+    } finally {
+      setWithdrawPending(false);
     }
   }
 
@@ -213,11 +225,49 @@ export default function SettingsPage() {
 
       <section className="mt-5 rounded-lg border border-[#FCA5A5] bg-white p-5 shadow-sm">
         <h2 className="text-xl font-bold text-[#991B1B]">회원 탈퇴</h2>
-        <p className="mt-3 text-sm leading-6 text-[#6B7280]">탈퇴 후 공개 게시글은 유지되며 작성자 정보는 익명화됩니다.</p>
-        <button className="mt-4 rounded-md bg-[#991B1B] px-4 py-2 text-sm font-semibold text-white" type="button" onClick={withdraw}>
+        <p className="mt-3 text-sm leading-6 text-[#6B7280]">
+          탈퇴하면 계정은 사용할 수 없고, 기존 공개 게시글은 유지되며 작성자 정보는 익명화됩니다.
+        </p>
+        <button
+          className="mt-4 rounded-md bg-[#991B1B] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#FCA5A5]"
+          type="button"
+          disabled={withdrawPending}
+          onClick={() => setWithdrawConfirmOpen(true)}
+        >
           회원 탈퇴
         </button>
       </section>
+
+      {withdrawConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5">
+          <div className="w-full max-w-md rounded-lg border border-[#FCA5A5] bg-white p-5 shadow-xl">
+            <p className="text-sm font-semibold text-[#991B1B]">회원 탈퇴 확인</p>
+            <h2 className="mt-2 text-xl font-bold text-[#1E2A38]">정말 탈퇴하시겠습니까?</h2>
+            <div className="mt-4 space-y-2 text-sm leading-6 text-[#6B7280]">
+              <p>탈퇴 즉시 이 계정으로 다시 로그인할 수 없습니다.</p>
+              <p>기존 공개 게시글은 삭제되지 않고 작성자가 탈퇴한 사용자로 표시됩니다.</p>
+            </div>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-md border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#1E2A38] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
+                type="button"
+                disabled={withdrawPending}
+                onClick={() => setWithdrawConfirmOpen(false)}
+              >
+                취소
+              </button>
+              <button
+                className="rounded-md bg-[#991B1B] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#FCA5A5]"
+                type="button"
+                disabled={withdrawPending}
+                onClick={withdraw}
+              >
+                {withdrawPending ? "처리 중" : "탈퇴하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
