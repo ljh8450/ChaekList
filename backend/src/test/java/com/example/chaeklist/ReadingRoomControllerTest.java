@@ -136,6 +136,44 @@ class ReadingRoomControllerTest {
 
 	@Test
 	@Transactional
+	void rejectsCancelAfterRoomStarted() throws Exception {
+		createReadingRoomTables();
+		insertBook(9251, "진행 중 방의 책");
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		long roomId = insertInProgressRoom(userId, 9251);
+		insertParticipant(roomId, userId);
+
+		mockMvc.perform(delete("/api/reading-rooms/{roomId}/participants/me", roomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Participation cannot be canceled after the room has started.")));
+	}
+
+	@Test
+	@Transactional
+	void rejectsJoiningFullRoom() throws Exception {
+		createReadingRoomTables();
+		insertBook(9261, "정원 초과 테스트 책");
+		String ownerToken = loginAndExtractAccessToken();
+		String firstJoinerToken = signupAndExtractAccessToken("first-full@chaeklist.kr", "first-full");
+		String secondJoinerToken = signupAndExtractAccessToken("second-full@chaeklist.kr", "second-full");
+		LocalDateTime startAt = LocalDateTime.now().plusDays(2).withNano(0);
+		long roomId = createRoom(ownerToken, 9261, "두 명만 읽는 모각독", startAt, startAt.plusHours(1), 2, "full-room");
+
+		mockMvc.perform(post("/api/reading-rooms/{roomId}/participants", roomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + firstJoinerToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.room.participantCount", is(2)));
+
+		mockMvc.perform(post("/api/reading-rooms/{roomId}/participants", roomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + secondJoinerToken))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Reading room is full.")));
+	}
+
+	@Test
+	@Transactional
 	void checksInAfterRoomEnded() throws Exception {
 		createReadingRoomTables();
 		insertBook(9301, "종료된 방의 책");
@@ -166,6 +204,42 @@ class ReadingRoomControllerTest {
 								}
 								"""))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@Transactional
+	void rejectsCheckInBeforeRoomEndedAndWithoutContent() throws Exception {
+		createReadingRoomTables();
+		insertBook(9351, "인증 경계 테스트 책");
+		String accessToken = loginAndExtractAccessToken();
+		long userId = userId();
+		long inProgressRoomId = insertInProgressRoom(userId, 9351);
+		long endedRoomId = insertEndedRoom(userId, 9351);
+		insertParticipant(inProgressRoomId, userId);
+		insertParticipant(endedRoomId, userId);
+
+		mockMvc.perform(post("/api/reading-rooms/{roomId}/checkins", inProgressRoomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "note": "아직 종료 전 인증"
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Check-in is only available after the room has ended.")));
+
+		mockMvc.perform(post("/api/reading-rooms/{roomId}/checkins", endedRoomId)
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "note": " ",
+								  "progress": " "
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Check-in note or progress is required.")));
 	}
 
 	@Test
@@ -203,6 +277,10 @@ class ReadingRoomControllerTest {
 	}
 
 	private long createRoom(String accessToken, long bookId, String title, LocalDateTime startAt, LocalDateTime endAt, String idempotencyKey) throws Exception {
+		return createRoom(accessToken, bookId, title, startAt, endAt, 5, idempotencyKey);
+	}
+
+	private long createRoom(String accessToken, long bookId, String title, LocalDateTime startAt, LocalDateTime endAt, int maxParticipants, String idempotencyKey) throws Exception {
 		String responseBody = mockMvc.perform(post("/api/reading-rooms")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
 						.contentType(MediaType.APPLICATION_JSON)
@@ -212,10 +290,10 @@ class ReadingRoomControllerTest {
 								  "title": "%s",
 								  "startAt": "%s",
 								  "endAt": "%s",
-								  "maxParticipants": 5,
+								  "maxParticipants": %d,
 								  "idempotencyKey": "%s"
 								}
-								""".formatted(bookId, title, startAt, endAt, idempotencyKey)))
+								""".formatted(bookId, title, startAt, endAt, maxParticipants, idempotencyKey)))
 				.andExpect(status().isOk())
 				.andReturn()
 				.getResponse()
@@ -321,6 +399,16 @@ class ReadingRoomControllerTest {
 					host_user_id, book_id, title, start_at, end_at, max_participants, status, visibility, created_at, updated_at
 				)
 				VALUES (?, ?, '종료된 모각독', DATEADD('HOUR', -2, CURRENT_TIMESTAMP), DATEADD('HOUR', -1, CURRENT_TIMESTAMP), 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		""", userId, bookId);
+		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
+	}
+
+	private long insertInProgressRoom(long userId, long bookId) {
+		jdbcTemplate.update("""
+				INSERT INTO reading_rooms (
+					host_user_id, book_id, title, start_at, end_at, max_participants, status, visibility, created_at, updated_at
+				)
+				VALUES (?, ?, '진행 중 모각독', DATEADD('MINUTE', -10, CURRENT_TIMESTAMP), DATEADD('MINUTE', 50, CURRENT_TIMESTAMP), 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", userId, bookId);
 		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
 	}
