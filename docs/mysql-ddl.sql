@@ -256,8 +256,6 @@ CREATE TABLE reading_rooms (
   book_id BIGINT NOT NULL,
   title VARCHAR(100) NOT NULL,
   description VARCHAR(500) NULL,
-  start_at DATETIME(6) NOT NULL,
-  end_at DATETIME(6) NOT NULL,
   max_participants INT NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'RECRUITING',
   visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC',
@@ -266,9 +264,9 @@ CREATE TABLE reading_rooms (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   UNIQUE KEY uk_reading_rooms_host_idempotency (host_user_id, idempotency_key),
-  KEY idx_reading_rooms_book_start (book_id, start_at),
-  KEY idx_reading_rooms_status_start (status, start_at),
-  KEY idx_reading_rooms_host_start (host_user_id, start_at),
+  KEY idx_reading_rooms_book_status (book_id, status),
+  KEY idx_reading_rooms_status_created (status, created_at),
+  KEY idx_reading_rooms_host_created (host_user_id, created_at),
   CONSTRAINT fk_reading_rooms_host
     FOREIGN KEY (host_user_id) REFERENCES users (id)
     ON DELETE CASCADE,
@@ -276,16 +274,65 @@ CREATE TABLE reading_rooms (
     FOREIGN KEY (book_id) REFERENCES books (id)
     ON DELETE CASCADE,
   CONSTRAINT chk_reading_rooms_status CHECK (
-    status IN ('RECRUITING', 'IN_PROGRESS', 'ENDED', 'CANCELED')
+    status IN ('RECRUITING', 'CANCELED')
   ),
   CONSTRAINT chk_reading_rooms_visibility CHECK (
     visibility IN ('PUBLIC')
   ),
-  CONSTRAINT chk_reading_rooms_time CHECK (
-    end_at > start_at
-  ),
   CONSTRAINT chk_reading_rooms_max_participants CHECK (
     max_participants BETWEEN 2 AND 30
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_schedules (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  day_of_week TINYINT NOT NULL,
+  day_label VARCHAR(10) NOT NULL,
+  scheduled_time TIME NOT NULL,
+  duration_minutes INT NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_reading_room_schedules_room (room_id),
+  KEY idx_reading_room_schedules_day_time (day_of_week, scheduled_time),
+  CONSTRAINT fk_reading_room_schedules_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_schedules_day CHECK (
+    day_of_week BETWEEN 1 AND 7
+  ),
+  CONSTRAINT chk_reading_room_schedules_duration CHECK (
+    duration_minutes >= 20
+  )
+) ENGINE=InnoDB;
+
+CREATE TABLE reading_room_sessions (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  room_id BIGINT NOT NULL,
+  schedule_id BIGINT NOT NULL,
+  session_date DATE NOT NULL,
+  scheduled_start_at DATETIME(6) NOT NULL,
+  scheduled_end_at DATETIME(6) NOT NULL,
+  started_at DATETIME(6) NULL,
+  ended_at DATETIME(6) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_room_sessions_schedule_date (schedule_id, session_date),
+  KEY idx_reading_room_sessions_room_start (room_id, scheduled_start_at),
+  KEY idx_reading_room_sessions_status_start (status, scheduled_start_at),
+  CONSTRAINT fk_reading_room_sessions_room
+    FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reading_room_sessions_schedule
+    FOREIGN KEY (schedule_id) REFERENCES reading_room_schedules (id)
+    ON DELETE CASCADE,
+  CONSTRAINT chk_reading_room_sessions_status CHECK (
+    status IN ('SCHEDULED', 'IN_PROGRESS', 'ENDED', 'CANCELED')
+  ),
+  CONSTRAINT chk_reading_room_sessions_schedule_time CHECK (
+    scheduled_end_at > scheduled_start_at
   )
 ) ENGINE=InnoDB;
 
@@ -296,7 +343,6 @@ CREATE TABLE reading_room_participants (
   status VARCHAR(20) NOT NULL DEFAULT 'JOINED',
   joined_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   canceled_at DATETIME(6) NULL,
-  completed_at DATETIME(6) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_reading_room_participants_room_user (room_id, user_id),
   KEY idx_reading_room_participants_user_status (user_id, status),
@@ -308,20 +354,25 @@ CREATE TABLE reading_room_participants (
     FOREIGN KEY (user_id) REFERENCES users (id)
     ON DELETE CASCADE,
   CONSTRAINT chk_reading_room_participants_status CHECK (
-    status IN ('JOINED', 'CANCELED', 'COMPLETED')
+    status IN ('JOINED', 'CANCELED')
   )
 ) ENGINE=InnoDB;
 
 CREATE TABLE reading_room_checkins (
   id BIGINT NOT NULL AUTO_INCREMENT,
+  session_id BIGINT NOT NULL,
   room_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   note VARCHAR(300) NULL,
   progress VARCHAR(100) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
-  UNIQUE KEY uk_reading_room_checkins_room_user (room_id, user_id),
+  UNIQUE KEY uk_reading_room_checkins_session_user (session_id, user_id),
+  KEY idx_reading_room_checkins_room_created (room_id, created_at),
   KEY idx_reading_room_checkins_user_created (user_id, created_at),
+  CONSTRAINT fk_reading_room_checkins_session
+    FOREIGN KEY (session_id) REFERENCES reading_room_sessions (id)
+    ON DELETE CASCADE,
   CONSTRAINT fk_reading_room_checkins_room
     FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
     ON DELETE CASCADE,
@@ -350,13 +401,18 @@ CREATE TABLE reading_room_admin_hidden (
 
 CREATE TABLE reading_room_notification_events (
   id BIGINT NOT NULL AUTO_INCREMENT,
+  session_id BIGINT NOT NULL,
   room_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   notification_type VARCHAR(30) NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
-  UNIQUE KEY uk_reading_room_notification_events_room_user_type (room_id, user_id, notification_type),
+  UNIQUE KEY uk_reading_room_notification_events_session_user_type (session_id, user_id, notification_type),
+  KEY idx_reading_room_notification_events_room_created (room_id, created_at),
   KEY idx_reading_room_notification_events_user_created (user_id, created_at),
+  CONSTRAINT fk_reading_room_notification_events_session
+    FOREIGN KEY (session_id) REFERENCES reading_room_sessions (id)
+    ON DELETE CASCADE,
   CONSTRAINT fk_reading_room_notification_events_room
     FOREIGN KEY (room_id) REFERENCES reading_rooms (id)
     ON DELETE CASCADE,

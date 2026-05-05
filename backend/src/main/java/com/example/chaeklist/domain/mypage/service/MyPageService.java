@@ -655,11 +655,10 @@ public class MyPageService {
 
 	private int countCompletedReadingRooms(long userId) {
 		Integer count = jdbcTemplate.queryForObject("""
-				SELECT COUNT(DISTINCT participant.room_id)
-				FROM reading_room_participants participant
-				JOIN reading_rooms room ON room.id = participant.room_id
-				WHERE participant.user_id = ?
-					AND participant.status = 'COMPLETED'
+				SELECT COUNT(DISTINCT checkin.session_id)
+				FROM reading_room_checkins checkin
+				JOIN reading_rooms room ON room.id = checkin.room_id
+				WHERE checkin.user_id = ?
 					AND room.status <> 'CANCELED'
 				""", Integer.class, userId);
 		return count == null ? 0 : count;
@@ -667,13 +666,12 @@ public class MyPageService {
 
 	private int countCompletedReadingRooms(long userId, LocalDateTime monthStart, LocalDateTime nextMonthStart) {
 		Integer count = jdbcTemplate.queryForObject("""
-				SELECT COUNT(DISTINCT participant.room_id)
-				FROM reading_room_participants participant
-				JOIN reading_rooms room ON room.id = participant.room_id
-				WHERE participant.user_id = ?
-					AND participant.status = 'COMPLETED'
-					AND participant.completed_at >= ?
-					AND participant.completed_at < ?
+				SELECT COUNT(DISTINCT checkin.session_id)
+				FROM reading_room_checkins checkin
+				JOIN reading_rooms room ON room.id = checkin.room_id
+				WHERE checkin.user_id = ?
+					AND checkin.created_at >= ?
+					AND checkin.created_at < ?
 					AND room.status <> 'CANCELED'
 				""", Integer.class, userId, monthStart, nextMonthStart);
 		return count == null ? 0 : count;

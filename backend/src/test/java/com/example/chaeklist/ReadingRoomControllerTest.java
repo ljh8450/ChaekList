@@ -124,8 +124,8 @@ class ReadingRoomControllerTest {
 
 		mockMvc.perform(post("/api/reading-rooms/{roomId}/participants", secondRoomId)
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + joinerToken))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message", is("Overlapping reading room participation is not allowed.")));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.participationStatus", is("JOINED")));
 
 		mockMvc.perform(delete("/api/reading-rooms/{roomId}/participants/me", firstRoomId)
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + joinerToken))
@@ -145,9 +145,9 @@ class ReadingRoomControllerTest {
 		insertParticipant(roomId, userId);
 
 		mockMvc.perform(delete("/api/reading-rooms/{roomId}/participants/me", roomId)
-						.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message", is("Participation cannot be canceled after the room has started.")));
+				.andExpect(jsonPath("$.message", is("Room host cannot cancel participation.")));
 	}
 
 	@Test
@@ -190,9 +190,9 @@ class ReadingRoomControllerTest {
 								  "note": "한 장을 집중해서 읽었습니다.",
 								  "progress": "30쪽"
 								}
-								"""))
+				"""))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.room.myParticipationStatus", is("COMPLETED")))
+				.andExpect(jsonPath("$.room.myParticipationStatus", is("JOINED")))
 				.andExpect(jsonPath("$.room.canCheckIn", is(false)));
 
 		mockMvc.perform(post("/api/reading-rooms/{roomId}/checkins", roomId)
@@ -396,21 +396,44 @@ class ReadingRoomControllerTest {
 	private long insertEndedRoom(long userId, long bookId) {
 		jdbcTemplate.update("""
 				INSERT INTO reading_rooms (
-					host_user_id, book_id, title, start_at, end_at, max_participants, status, visibility, created_at, updated_at
+					host_user_id, book_id, title, max_participants, status, visibility, created_at, updated_at
 				)
-				VALUES (?, ?, '종료된 모각독', DATEADD('HOUR', -2, CURRENT_TIMESTAMP), DATEADD('HOUR', -1, CURRENT_TIMESTAMP), 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, '종료된 모각독', 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		""", userId, bookId);
-		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
+		long roomId = jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
+		long scheduleId = insertSchedule(roomId);
+		insertSession(roomId, scheduleId, "ENDED", "DATEADD('HOUR', -2, CURRENT_TIMESTAMP)", "DATEADD('HOUR', -1, CURRENT_TIMESTAMP)");
+		return roomId;
 	}
 
 	private long insertInProgressRoom(long userId, long bookId) {
 		jdbcTemplate.update("""
 				INSERT INTO reading_rooms (
-					host_user_id, book_id, title, start_at, end_at, max_participants, status, visibility, created_at, updated_at
+					host_user_id, book_id, title, max_participants, status, visibility, created_at, updated_at
 				)
-				VALUES (?, ?, '진행 중 모각독', DATEADD('MINUTE', -10, CURRENT_TIMESTAMP), DATEADD('MINUTE', 50, CURRENT_TIMESTAMP), 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, '진행 중 모각독', 5, 'RECRUITING', 'PUBLIC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", userId, bookId);
-		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
+		long roomId = jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_rooms", Long.class);
+		long scheduleId = insertSchedule(roomId);
+		insertSession(roomId, scheduleId, "IN_PROGRESS", "DATEADD('MINUTE', -10, CURRENT_TIMESTAMP)", "DATEADD('MINUTE', 50, CURRENT_TIMESTAMP)");
+		return roomId;
+	}
+
+	private long insertSchedule(long roomId) {
+		jdbcTemplate.update("""
+				INSERT INTO reading_room_schedules (room_id, day_of_week, day_label, scheduled_time, duration_minutes, created_at)
+				VALUES (?, 2, '월요일', CURRENT_TIME, 60, CURRENT_TIMESTAMP)
+				""", roomId);
+		return jdbcTemplate.queryForObject("SELECT MAX(id) FROM reading_room_schedules", Long.class);
+	}
+
+	private void insertSession(long roomId, long scheduleId, String status, String startExpression, String endExpression) {
+		jdbcTemplate.update("""
+				INSERT INTO reading_room_sessions (
+					room_id, schedule_id, session_date, scheduled_start_at, scheduled_end_at, started_at, ended_at, status, created_at, updated_at
+				)
+				VALUES (?, ?, CURRENT_DATE, %s, %s, %s, %s, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""".formatted(startExpression, endExpression, startExpression, "ENDED".equals(status) ? endExpression : "NULL"), roomId, scheduleId, status);
 	}
 
 	private void insertParticipant(long roomId, long userId) {
@@ -428,8 +451,6 @@ class ReadingRoomControllerTest {
 					book_id BIGINT NOT NULL,
 					title VARCHAR(100) NOT NULL,
 					description VARCHAR(500),
-					start_at DATETIME(6) NOT NULL,
-					end_at DATETIME(6) NOT NULL,
 					max_participants INT NOT NULL,
 					status VARCHAR(20) NOT NULL DEFAULT 'RECRUITING',
 					visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC',
@@ -440,6 +461,32 @@ class ReadingRoomControllerTest {
 				)
 				""");
 		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS reading_room_schedules (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					room_id BIGINT NOT NULL,
+					day_of_week TINYINT NOT NULL,
+					day_label VARCHAR(10) NOT NULL,
+					scheduled_time TIME NOT NULL,
+					duration_minutes INT NOT NULL,
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
+				CREATE TABLE IF NOT EXISTS reading_room_sessions (
+					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					room_id BIGINT NOT NULL,
+					schedule_id BIGINT NOT NULL,
+					session_date DATE NOT NULL,
+					scheduled_start_at DATETIME(6) NOT NULL,
+					scheduled_end_at DATETIME(6) NOT NULL,
+					started_at DATETIME(6),
+					ended_at DATETIME(6),
+					status VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+				""");
+		jdbcTemplate.execute("""
 				CREATE TABLE IF NOT EXISTS reading_room_participants (
 					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
 					room_id BIGINT NOT NULL,
@@ -447,19 +494,19 @@ class ReadingRoomControllerTest {
 					status VARCHAR(20) NOT NULL DEFAULT 'JOINED',
 					joined_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 					canceled_at DATETIME(6),
-					completed_at DATETIME(6),
 					CONSTRAINT uk_reading_room_participants_room_user UNIQUE (room_id, user_id)
 				)
 				""");
 		jdbcTemplate.execute("""
 				CREATE TABLE IF NOT EXISTS reading_room_checkins (
 					id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+					session_id BIGINT NOT NULL,
 					room_id BIGINT NOT NULL,
 					user_id BIGINT NOT NULL,
 					note VARCHAR(300),
 					progress VARCHAR(100),
 					created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-					CONSTRAINT uk_reading_room_checkins_room_user UNIQUE (room_id, user_id)
+					CONSTRAINT uk_reading_room_checkins_session_user UNIQUE (session_id, user_id)
 				)
 				""");
 		jdbcTemplate.execute("""

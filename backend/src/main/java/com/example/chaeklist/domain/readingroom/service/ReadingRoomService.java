@@ -5,9 +5,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Time;
+import java.time.DayOfWeek;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -19,6 +22,8 @@ import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomC
 import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomCreateRequest;
 import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomParticipantResponse;
 import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomResponse;
+import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomScheduleRequest;
+import com.example.chaeklist.domain.readingroom.dto.ReadingRoomDtos.ReadingRoomScheduleResponse;
 import com.example.chaeklist.global.auth.AuthenticatedUser;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -35,10 +40,8 @@ public class ReadingRoomService {
 	private static final int MAX_LIMIT = 50;
 	private static final int MIN_PARTICIPANTS = 2;
 	private static final int MAX_PARTICIPANTS = 30;
-	private static final int MAX_DAILY_ROOMS_PER_USER = 3;
 	private static final int MAX_NOTE_LENGTH = 300;
 	private static final Duration MIN_DURATION = Duration.ofMinutes(20);
-	private static final Duration MAX_DURATION = Duration.ofHours(4);
 	private static final Set<String> STATUSES = Set.of("RECRUITING", "IN_PROGRESS", "ENDED", "CANCELED");
 
 	private final JdbcTemplate jdbcTemplate;
@@ -57,13 +60,14 @@ public class ReadingRoomService {
 					JOIN books b ON b.id = rr.book_id
 					LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
 					WHERE rr.visibility = 'PUBLIC'
+						AND rr.status <> 'CANCELED'
 						AND host.status = 'ACTIVE'
 						AND NOT EXISTS (
 							SELECT 1
 							FROM reading_room_admin_hidden hidden
 							WHERE hidden.room_id = rr.id
 						)
-					ORDER BY rr.start_at ASC, rr.id ASC
+					ORDER BY rr.created_at DESC, rr.id DESC
 					LIMIT ?
 					""".formatted(selectColumns(), primaryCategorySubquery()),
 					(resultSet, rowNumber) -> mapRoom(resultSet, user),
@@ -79,6 +83,7 @@ public class ReadingRoomService {
 				JOIN books b ON b.id = rr.book_id
 				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
 				WHERE rr.visibility = 'PUBLIC'
+					AND rr.status <> 'CANCELED'
 					AND host.status = 'ACTIVE'
 					AND rr.book_id = ?
 					AND NOT EXISTS (
@@ -86,7 +91,7 @@ public class ReadingRoomService {
 						FROM reading_room_admin_hidden hidden
 						WHERE hidden.room_id = rr.id
 					)
-				ORDER BY rr.start_at ASC, rr.id ASC
+				ORDER BY rr.created_at DESC, rr.id DESC
 				LIMIT ?
 				""".formatted(selectColumns(), primaryCategorySubquery()),
 				(resultSet, rowNumber) -> mapRoom(resultSet, user),
@@ -143,7 +148,7 @@ public class ReadingRoomService {
 					AND participant.user_id = ?
 				WHERE rr.host_user_id = ?
 					OR participant.user_id = ?
-				ORDER BY rr.start_at DESC, rr.id DESC
+				ORDER BY rr.created_at DESC, rr.id DESC
 				LIMIT ?
 				""".formatted(selectColumns(), primaryCategorySubquery()),
 				(resultSet, rowNumber) -> mapRoom(resultSet, user),
@@ -161,14 +166,11 @@ public class ReadingRoomService {
 		Long bookId = request == null ? null : request.bookId();
 		String title = normalizeRequiredText(request == null ? null : request.title(), "Title is required.", 100);
 		String description = normalizeOptionalText(request == null ? null : request.description(), 500);
-		LocalDateTime startAt = request == null ? null : request.startAt();
-		LocalDateTime endAt = request == null ? null : request.endAt();
+		List<NormalizedSchedule> schedules = normalizeSchedules(request);
 		int maxParticipants = normalizeMaxParticipants(request == null ? null : request.maxParticipants());
 		String idempotencyKey = normalizeOptionalText(request == null ? null : request.idempotencyKey(), 100);
 
 		validateBook(bookId);
-		validateTimeRange(startAt, endAt);
-		validateDailyRoomLimit(user.id(), startAt.toLocalDate());
 
 		if (idempotencyKey != null) {
 			Optional<ReadingRoomResponse> existingRoom = findRoomByIdempotencyKey(user.id(), idempotencyKey);
@@ -182,19 +184,17 @@ public class ReadingRoomService {
 			jdbcTemplate.update(connection -> {
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO reading_rooms (
-							host_user_id, book_id, title, description, start_at, end_at,
+							host_user_id, book_id, title, description,
 							max_participants, status, visibility, idempotency_key, created_at, updated_at
 						)
-						VALUES (?, ?, ?, ?, ?, ?, ?, 'RECRUITING', 'PUBLIC', ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+						VALUES (?, ?, ?, ?, ?, 'RECRUITING', 'PUBLIC', ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
 						""", Statement.RETURN_GENERATED_KEYS);
 				statement.setLong(1, user.id());
 				statement.setLong(2, bookId);
 				statement.setString(3, title);
 				statement.setString(4, description);
-				statement.setTimestamp(5, Timestamp.valueOf(startAt));
-				statement.setTimestamp(6, Timestamp.valueOf(endAt));
-				statement.setInt(7, maxParticipants);
-				statement.setString(8, idempotencyKey);
+				statement.setInt(5, maxParticipants);
+				statement.setString(6, idempotencyKey);
 				return statement;
 			}, keyHolder);
 			Number key = generatedId(keyHolder);
@@ -202,6 +202,7 @@ public class ReadingRoomService {
 				throw new ReadingRoomRequestException("Reading room creation failed.");
 			}
 			long roomId = key.longValue();
+			insertSchedules(roomId, schedules);
 			joinRoom(user, roomId);
 			return getReadingRoom(user, roomId);
 		} catch (DuplicateKeyException exception) {
@@ -223,8 +224,8 @@ public class ReadingRoomService {
 	@Transactional
 	public ReadingRoomParticipantResponse cancelMyParticipation(AuthenticatedUser user, long roomId) {
 		ReadingRoomResponse room = getReadingRoom(user, roomId);
-		if ("IN_PROGRESS".equals(room.status()) || "ENDED".equals(room.status())) {
-			throw new ReadingRoomRequestException("Participation cannot be canceled after the room has started.");
+		if (room.hostUserId() == user.id()) {
+			throw new ReadingRoomRequestException("Room host cannot cancel participation.");
 		}
 		int updated = jdbcTemplate.update("""
 				UPDATE reading_room_participants
@@ -241,9 +242,32 @@ public class ReadingRoomService {
 	}
 
 	@Transactional
+	public ReadingRoomResponse startReadingRoom(AuthenticatedUser user, long roomId) {
+		ReadingRoomResponse room = getReadingRoom(user, roomId);
+		validateRoomHost(user, room);
+		createManualSession(room);
+		return getReadingRoom(user, roomId);
+	}
+
+	@Transactional
+	public ReadingRoomResponse cancelReadingRoom(AuthenticatedUser user, long roomId) {
+		ReadingRoomResponse room = getReadingRoom(user, roomId);
+		validateRoomHost(user, room);
+		jdbcTemplate.update("""
+				UPDATE reading_rooms
+				SET status = 'CANCELED',
+					updated_at = CURRENT_TIMESTAMP(6)
+				WHERE id = ?
+				""", roomId);
+		jdbcTemplate.update("UPDATE reading_room_sessions SET status = 'CANCELED' WHERE room_id = ? AND status <> 'ENDED'", roomId);
+		return getAdminReadingRoom(user, roomId);
+	}
+
+	@Transactional
 	public ReadingRoomCheckInResponse checkIn(AuthenticatedUser user, long roomId, ReadingRoomCheckInRequest request) {
 		ReadingRoomResponse room = getReadingRoom(user, roomId);
-		if (!"ENDED".equals(room.status())) {
+		Long sessionId = findLatestEndedSessionId(roomId);
+		if (sessionId == null) {
 			throw new ReadingRoomRequestException("Check-in is only available after the room has ended.");
 		}
 		if (!"JOINED".equals(room.myParticipationStatus())) {
@@ -258,22 +282,16 @@ public class ReadingRoomService {
 			KeyHolder keyHolder = new GeneratedKeyHolder();
 			jdbcTemplate.update(connection -> {
 				PreparedStatement statement = connection.prepareStatement("""
-						INSERT INTO reading_room_checkins (room_id, user_id, note, progress, created_at)
-						VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+						INSERT INTO reading_room_checkins (session_id, room_id, user_id, note, progress, created_at)
+						VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6))
 						""", Statement.RETURN_GENERATED_KEYS);
-				statement.setLong(1, roomId);
-				statement.setLong(2, user.id());
-				statement.setString(3, note);
-				statement.setString(4, progress);
+				statement.setLong(1, sessionId);
+				statement.setLong(2, roomId);
+				statement.setLong(3, user.id());
+				statement.setString(4, note);
+				statement.setString(5, progress);
 				return statement;
 			}, keyHolder);
-			jdbcTemplate.update("""
-					UPDATE reading_room_participants
-					SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP(6)
-					WHERE room_id = ?
-						AND user_id = ?
-						AND status = 'JOINED'
-					""", roomId, user.id());
 			Number key = generatedId(keyHolder);
 			if (key == null) {
 				throw new ReadingRoomRequestException("Check-in creation failed.");
@@ -287,7 +305,7 @@ public class ReadingRoomService {
 
 	private void joinRoom(AuthenticatedUser user, long roomId) {
 		ReadingRoomResponse room = getReadingRoom(user, roomId);
-		if ("JOINED".equals(room.myParticipationStatus()) || "COMPLETED".equals(room.myParticipationStatus())) {
+		if ("JOINED".equals(room.myParticipationStatus())) {
 			return;
 		}
 		if (!"RECRUITING".equals(room.status())) {
@@ -296,7 +314,6 @@ public class ReadingRoomService {
 		if (room.participantCount() >= room.maxParticipants()) {
 			throw new ReadingRoomRequestException("Reading room is full.");
 		}
-		validateNoOverlappingParticipation(user.id(), room.startAt(), room.endAt(), roomId);
 		try {
 			jdbcTemplate.update("""
 					INSERT INTO reading_room_participants (room_id, user_id, status, joined_at)
@@ -354,6 +371,7 @@ public class ReadingRoomService {
 				LEFT JOIN (%s) primary_category ON primary_category.book_id = b.id
 				WHERE rr.id = ?
 					AND rr.visibility = 'PUBLIC'
+					AND rr.status <> 'CANCELED'
 					AND host.status = 'ACTIVE'
 					AND NOT EXISTS (
 						SELECT 1
@@ -365,6 +383,18 @@ public class ReadingRoomService {
 				roomId
 		);
 		return rooms.stream().findFirst();
+	}
+
+	private Long findLatestEndedSessionId(long roomId) {
+		List<Long> sessionIds = jdbcTemplate.query("""
+				SELECT id
+				FROM reading_room_sessions
+				WHERE room_id = ?
+					AND status = 'ENDED'
+				ORDER BY scheduled_start_at DESC, id DESC
+				LIMIT 1
+				""", (resultSet, rowNumber) -> resultSet.getLong("id"), roomId);
+		return sessionIds.stream().findFirst().orElse(null);
 	}
 
 	private ReadingRoomResponse getAdminReadingRoom(AuthenticatedUser user, long roomId) {
@@ -388,6 +418,12 @@ public class ReadingRoomService {
 		}
 	}
 
+	private void validateRoomHost(AuthenticatedUser user, ReadingRoomResponse room) {
+		if (user == null || room.hostUserId() != user.id()) {
+			throw new ReadingRoomForbiddenException("Only the room host can change this reading room.");
+		}
+	}
+
 	private Optional<ReadingRoomResponse> findRoomByIdempotencyKey(long userId, String idempotencyKey) {
 		List<ReadingRoomResponse> rooms = jdbcTemplate.query("""
 				SELECT %s
@@ -408,14 +444,15 @@ public class ReadingRoomService {
 	private ReadingRoomResponse mapRoom(ResultSet resultSet, AuthenticatedUser user) throws SQLException {
 		long roomId = resultSet.getLong("id");
 		long hostUserId = resultSet.getLong("host_user_id");
-		LocalDateTime startAt = resultSet.getTimestamp("start_at").toLocalDateTime();
-		LocalDateTime endAt = resultSet.getTimestamp("end_at").toLocalDateTime();
+		List<ReadingRoomScheduleResponse> schedules = findSchedules(roomId);
+		ReadingRoomScheduleResponse primarySchedule = schedules.isEmpty() ? null : schedules.getFirst();
+		CurrentSession currentSession = findCurrentSession(roomId);
 		String storedStatus = resultSet.getString("status");
-		String displayStatus = displayStatus(storedStatus, startAt, endAt);
+		String displayStatus = displayStatus(storedStatus, currentSession);
 		String myParticipationStatus = findMyParticipationStatus(roomId, nullableUserId(user));
 		boolean mine = user != null && user.id() == hostUserId;
 		boolean joined = "JOINED".equals(myParticipationStatus);
-		boolean completed = "COMPLETED".equals(myParticipationStatus);
+		boolean completed = user != null && hasLatestSessionCheckIn(roomId, user.id());
 		int participantCount = resultSet.getInt("participant_count");
 		int maxParticipants = resultSet.getInt("max_participants");
 		return new ReadingRoomResponse(
@@ -431,16 +468,22 @@ public class ReadingRoomService {
 				),
 				resultSet.getString("title"),
 				resultSet.getString("description"),
-				startAt,
-				endAt,
+				schedules,
+				null,
+				primarySchedule == null ? null : primarySchedule.dayLabel(),
+				primarySchedule == null ? null : primarySchedule.scheduledTime(),
+				primarySchedule == null ? 0 : primarySchedule.durationMinutes(),
+				currentSession == null ? null : currentSession.startedAt(),
+				currentSession == null ? null : currentSession.scheduledStartAt(),
+				currentSession == null ? null : currentSession.scheduledEndAt(),
 				maxParticipants,
 				participantCount,
 				displayStatus,
 				myParticipationStatus,
 				mine,
 				user != null && "RECRUITING".equals(displayStatus) && !joined && !completed && participantCount < maxParticipants,
-				user != null && joined && "RECRUITING".equals(displayStatus),
-				user != null && joined && "ENDED".equals(displayStatus),
+				user != null && joined && !mine && "RECRUITING".equals(displayStatus),
+				user != null && joined && "ENDED".equals(displayStatus) && !completed,
 				resultSet.getTimestamp("created_at").toLocalDateTime(),
 				resultSet.getTimestamp("updated_at").toLocalDateTime()
 		);
@@ -459,18 +502,65 @@ public class ReadingRoomService {
 		return statuses.stream().findFirst().orElse(null);
 	}
 
-	private String displayStatus(String storedStatus, LocalDateTime startAt, LocalDateTime endAt) {
+	private List<ReadingRoomScheduleResponse> findSchedules(long roomId) {
+		return jdbcTemplate.query("""
+				SELECT id, day_of_week, day_label, scheduled_time, duration_minutes
+				FROM reading_room_schedules
+				WHERE room_id = ?
+				ORDER BY day_of_week ASC, scheduled_time ASC, id ASC
+				""", (resultSet, rowNumber) -> new ReadingRoomScheduleResponse(
+				resultSet.getLong("id"),
+				resultSet.getInt("day_of_week"),
+				resultSet.getString("day_label"),
+				resultSet.getTime("scheduled_time").toLocalTime(),
+				resultSet.getInt("duration_minutes")
+		), roomId);
+	}
+
+	private CurrentSession findCurrentSession(long roomId) {
+		List<CurrentSession> sessions = jdbcTemplate.query("""
+				SELECT id, scheduled_start_at, scheduled_end_at, started_at, ended_at, status
+				FROM reading_room_sessions
+				WHERE room_id = ?
+					AND status IN ('IN_PROGRESS', 'ENDED')
+				ORDER BY scheduled_start_at DESC, id DESC
+				LIMIT 1
+				""", (resultSet, rowNumber) -> new CurrentSession(
+				resultSet.getLong("id"),
+				resultSet.getTimestamp("scheduled_start_at").toLocalDateTime(),
+				resultSet.getTimestamp("scheduled_end_at").toLocalDateTime(),
+				resultSet.getTimestamp("started_at") == null ? null : resultSet.getTimestamp("started_at").toLocalDateTime(),
+				resultSet.getTimestamp("ended_at") == null ? null : resultSet.getTimestamp("ended_at").toLocalDateTime(),
+				resultSet.getString("status")
+		), roomId);
+		return sessions.stream().findFirst().orElse(null);
+	}
+
+	private boolean hasLatestSessionCheckIn(long roomId, long userId) {
+		Long sessionId = findLatestEndedSessionId(roomId);
+		if (sessionId == null) {
+			return false;
+		}
+		Integer count = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM reading_room_checkins
+				WHERE session_id = ?
+					AND user_id = ?
+				""", Integer.class, sessionId, userId);
+		return count != null && count > 0;
+	}
+
+	private String displayStatus(String storedStatus, CurrentSession currentSession) {
 		if ("CANCELED".equals(storedStatus)) {
 			return "CANCELED";
 		}
-		LocalDateTime now = LocalDateTime.now();
-		if (now.isBefore(startAt)) {
+		if (currentSession == null) {
 			return "RECRUITING";
 		}
-		if (now.isBefore(endAt)) {
+		if ("IN_PROGRESS".equals(currentSession.status())) {
 			return "IN_PROGRESS";
 		}
-		return "ENDED";
+		return "ENDED".equals(currentSession.status()) ? "ENDED" : "RECRUITING";
 	}
 
 	private void validateBook(Long bookId) {
@@ -487,53 +577,127 @@ public class ReadingRoomService {
 		}
 	}
 
-	private void validateTimeRange(LocalDateTime startAt, LocalDateTime endAt) {
-		if (startAt == null || endAt == null) {
-			throw new ReadingRoomRequestException("Start and end time are required.");
+	private List<NormalizedSchedule> normalizeSchedules(ReadingRoomCreateRequest request) {
+		List<NormalizedSchedule> schedules = new ArrayList<>();
+		if (request != null && request.schedules() != null) {
+			for (ReadingRoomScheduleRequest schedule : request.schedules()) {
+				schedules.add(normalizeSchedule(schedule));
+			}
 		}
-		if (!startAt.isAfter(LocalDateTime.now())) {
-			throw new ReadingRoomRequestException("Start time must be in the future.");
+		if (schedules.isEmpty() && request != null && request.scheduledDate() != null && request.scheduledTime() != null) {
+			schedules.add(new NormalizedSchedule(
+					dayOfWeekValue(request.scheduledDate().getDayOfWeek()),
+					scheduledDayOfWeek(request.scheduledDate().getDayOfWeek()),
+					request.scheduledTime(),
+					normalizeDurationMinutes(request.durationMinutes())
+			));
 		}
-		if (!endAt.isAfter(startAt)) {
-			throw new ReadingRoomRequestException("End time must be after start time.");
+		if (schedules.isEmpty() && request != null && request.startAt() != null && request.endAt() != null) {
+			schedules.add(new NormalizedSchedule(
+					dayOfWeekValue(request.startAt().getDayOfWeek()),
+					scheduledDayOfWeek(request.startAt().getDayOfWeek()),
+					request.startAt().toLocalTime(),
+					normalizeDurationMinutes(Math.toIntExact(Duration.between(request.startAt(), request.endAt()).toMinutes()))
+			));
 		}
-		Duration duration = Duration.between(startAt, endAt);
-		if (duration.compareTo(MIN_DURATION) < 0) {
+		if (schedules.isEmpty()) {
+			throw new ReadingRoomRequestException("Schedule is required.");
+		}
+		return schedules;
+	}
+
+	private NormalizedSchedule normalizeSchedule(ReadingRoomScheduleRequest schedule) {
+		if (schedule == null || schedule.dayOfWeek() == null || schedule.scheduledTime() == null) {
+			throw new ReadingRoomRequestException("Schedule day and time are required.");
+		}
+		if (schedule.dayOfWeek() < 1 || schedule.dayOfWeek() > 7) {
+			throw new ReadingRoomRequestException("Schedule day must be between 1 and 7.");
+		}
+		return new NormalizedSchedule(
+				schedule.dayOfWeek(),
+				dayLabel(schedule.dayOfWeek()),
+				schedule.scheduledTime(),
+				normalizeDurationMinutes(schedule.durationMinutes())
+		);
+	}
+
+	private int normalizeDurationMinutes(Integer durationMinutes) {
+		if (durationMinutes == null) {
+			throw new ReadingRoomRequestException("Duration is required.");
+		}
+		if (Duration.ofMinutes(durationMinutes).compareTo(MIN_DURATION) < 0) {
 			throw new ReadingRoomRequestException("Reading room must be at least 20 minutes.");
 		}
-		if (duration.compareTo(MAX_DURATION) > 0) {
-			throw new ReadingRoomRequestException("Reading room cannot exceed 4 hours.");
+		return durationMinutes;
+	}
+
+	private void insertSchedules(long roomId, List<NormalizedSchedule> schedules) {
+		for (NormalizedSchedule schedule : schedules) {
+			jdbcTemplate.update("""
+					INSERT INTO reading_room_schedules (
+						room_id, day_of_week, day_label, scheduled_time, duration_minutes, created_at
+					)
+					VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+					""",
+					roomId,
+					schedule.dayOfWeek(),
+					schedule.dayLabel(),
+					Time.valueOf(schedule.scheduledTime()),
+					schedule.durationMinutes()
+			);
 		}
 	}
 
-	private void validateDailyRoomLimit(long userId, LocalDate date) {
-		Integer count = jdbcTemplate.queryForObject("""
-				SELECT COUNT(*)
-				FROM reading_rooms
-				WHERE host_user_id = ?
-					AND DATE(start_at) = ?
-					AND status <> 'CANCELED'
-				""", Integer.class, userId, date);
-		if (count != null && count >= MAX_DAILY_ROOMS_PER_USER) {
-			throw new ReadingRoomRequestException("Daily reading room creation limit exceeded.");
+	private void createManualSession(ReadingRoomResponse room) {
+		if (room.schedules().isEmpty()) {
+			throw new ReadingRoomRequestException("Schedule is required.");
 		}
+		ReadingRoomScheduleResponse schedule = room.schedules().getFirst();
+		LocalDateTime startedAt = LocalDateTime.now();
+		LocalDateTime endedAt = startedAt.plusMinutes(schedule.durationMinutes());
+		jdbcTemplate.update("""
+				INSERT INTO reading_room_sessions (
+					room_id, schedule_id, session_date, scheduled_start_at, scheduled_end_at,
+					started_at, status, created_at, updated_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, 'IN_PROGRESS', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+				""",
+				room.id(),
+				schedule.id(),
+				java.sql.Date.valueOf(startedAt.toLocalDate()),
+				Timestamp.valueOf(startedAt),
+				Timestamp.valueOf(endedAt),
+				Timestamp.valueOf(startedAt)
+		);
 	}
 
-	private void validateNoOverlappingParticipation(long userId, LocalDateTime startAt, LocalDateTime endAt, long currentRoomId) {
-		Integer count = jdbcTemplate.queryForObject("""
-				SELECT COUNT(*)
-				FROM reading_room_participants participant
-				JOIN reading_rooms room ON room.id = participant.room_id
-				WHERE participant.user_id = ?
-					AND participant.status = 'JOINED'
-					AND room.status <> 'CANCELED'
-					AND room.id <> ?
-					AND room.start_at < ?
-					AND room.end_at > ?
-				""", Integer.class, userId, currentRoomId, Timestamp.valueOf(endAt), Timestamp.valueOf(startAt));
-		if (count != null && count > 0) {
-			throw new ReadingRoomRequestException("Overlapping reading room participation is not allowed.");
-		}
+	private int dayOfWeekValue(DayOfWeek dayOfWeek) {
+		return switch (dayOfWeek) {
+			case SUNDAY -> 1;
+			case MONDAY -> 2;
+			case TUESDAY -> 3;
+			case WEDNESDAY -> 4;
+			case THURSDAY -> 5;
+			case FRIDAY -> 6;
+			case SATURDAY -> 7;
+		};
+	}
+
+	private String scheduledDayOfWeek(DayOfWeek dayOfWeek) {
+		return dayLabel(dayOfWeekValue(dayOfWeek));
+	}
+
+	private String dayLabel(int dayOfWeek) {
+		return switch (dayOfWeek) {
+			case 1 -> "일요일";
+			case 2 -> "월요일";
+			case 3 -> "화요일";
+			case 4 -> "수요일";
+			case 5 -> "목요일";
+			case 6 -> "금요일";
+			case 7 -> "토요일";
+			default -> throw new ReadingRoomRequestException("Schedule day must be between 1 and 7.");
+		};
 	}
 
 	private String normalizeOptionalStatus(String status) {
@@ -610,8 +774,6 @@ public class ReadingRoomService {
 				primary_category.name AS book_category,
 				rr.title,
 				rr.description,
-				rr.start_at,
-				rr.end_at,
 				rr.max_participants,
 				rr.status,
 				rr.created_at,
@@ -620,7 +782,7 @@ public class ReadingRoomService {
 					SELECT COUNT(*)
 					FROM reading_room_participants participant_count
 					WHERE participant_count.room_id = rr.id
-						AND participant_count.status IN ('JOINED', 'COMPLETED')
+						AND participant_count.status = 'JOINED'
 				) AS participant_count
 				""";
 	}
@@ -660,5 +822,23 @@ public class ReadingRoomService {
 		public ReadingRoomForbiddenException(String message) {
 			super(message);
 		}
+	}
+
+	private record NormalizedSchedule(
+			int dayOfWeek,
+			String dayLabel,
+			LocalTime scheduledTime,
+			int durationMinutes
+	) {
+	}
+
+	private record CurrentSession(
+			long id,
+			LocalDateTime scheduledStartAt,
+			LocalDateTime scheduledEndAt,
+			LocalDateTime startedAt,
+			LocalDateTime endedAt,
+			String status
+	) {
 	}
 }

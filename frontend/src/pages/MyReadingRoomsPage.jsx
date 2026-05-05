@@ -44,6 +44,22 @@ function formatDateTime(value) {
   });
 }
 
+function durationLabel(minutes) {
+  const value = Number(minutes ?? 0);
+  if (value >= 60 && value % 60 === 0) return `${value / 60}시간`;
+  return `${value}분`;
+}
+
+function formatSchedule(room) {
+  const schedules = Array.isArray(room.schedules) ? room.schedules : [];
+  if (schedules.length > 0) {
+    return schedules
+      .map((schedule) => `${schedule.dayLabel} ${String(schedule.scheduledTime ?? "").slice(0, 5)} · ${durationLabel(schedule.durationMinutes)}`)
+      .join(" / ");
+  }
+  return "일정 없음";
+}
+
 export default function MyReadingRoomsPage() {
   const { accessToken, logout } = useAuth();
   const [rooms, setRooms] = useState([]);
@@ -111,7 +127,8 @@ export default function MyReadingRoomsPage() {
               </div>
               {room.mine ? <span className="rounded-md border border-[#E5E7EB] px-2 py-1 text-xs text-[#6B7280]">방장</span> : null}
             </div>
-            <p className="mt-4 text-sm text-[#6B7280]">{formatDateTime(room.startAt)} ~ {formatDateTime(room.endAt)}</p>
+            <p className="mt-4 text-sm text-[#6B7280]">{formatSchedule(room)}</p>
+            {room.startedAt ? <p className="mt-1 text-sm text-[#6B7280]">실제 시작 {formatDateTime(room.startedAt)}</p> : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-md bg-[#F9FAFB] px-3 py-2 text-sm font-semibold text-[#1E2A38]">{roomStateLabel(room)}</span>
               <span className="rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#6B7280]">내 상태 {participationLabel(room.myParticipationStatus)}</span>

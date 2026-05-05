@@ -10,6 +10,16 @@ const statusOptions = [
   ["ENDED", "종료"],
 ];
 
+const dayOptions = [
+  [1, "일요일"],
+  [2, "월요일"],
+  [3, "화요일"],
+  [4, "수요일"],
+  [5, "목요일"],
+  [6, "금요일"],
+  [7, "토요일"],
+];
+
 function statusLabel(status) {
   if (status === "RECRUITING") return "모집 중";
   if (status === "IN_PROGRESS") return "진행 중";
@@ -35,6 +45,20 @@ function formatDateTime(value) {
   });
 }
 
+function formatSchedule(room) {
+  const schedules = Array.isArray(room.schedules) ? room.schedules : [];
+  if (schedules.length > 0) {
+    return schedules
+      .map((schedule) => {
+        const duration = Number(schedule.durationMinutes ?? 0);
+        const durationText = duration >= 60 && duration % 60 === 0 ? `${duration / 60}시간` : `${duration}분`;
+        return `${schedule.dayLabel} ${String(schedule.scheduledTime ?? "").slice(0, 5)} · ${durationText}`;
+      })
+      .join(" / ");
+  }
+  return "일정 없음";
+}
+
 function RoomCard({ room }) {
   return (
     <article className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
@@ -50,8 +74,8 @@ function RoomCard({ room }) {
           <p className="mt-3 text-sm leading-6 text-[#6B7280]">{room.description || "설명 없음"}</p>
         </div>
         <div className="shrink-0 text-sm text-[#6B7280] sm:text-right">
-          <p>{formatDateTime(room.startAt)}</p>
-          <p className="mt-1">~ {formatDateTime(room.endAt)}</p>
+          <p>{formatSchedule(room)}</p>
+          {room.startedAt ? <p className="mt-1">시작 {formatDateTime(room.startedAt)}</p> : null}
           <p className="mt-3 font-semibold text-[#1E2A38]">
             {room.participantCount}/{room.maxParticipants}명
           </p>
@@ -71,9 +95,12 @@ function RoomCard({ room }) {
   );
 }
 
-function toLocalInputValue(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function defaultSchedule() {
+  return {
+    dayOfWeek: 2,
+    scheduledTime: "20:00",
+    durationMinutes: "60",
+  };
 }
 
 function normalizeBook(book) {
@@ -86,6 +113,19 @@ function normalizeBook(book) {
     author: book.author ?? "",
     category: book.category ?? book.categoryName ?? "",
   };
+}
+
+function createRoomErrorMessage(message) {
+  if (message === "Daily reading room creation limit exceeded.") return "하루에 만들 수 있는 모각독 방 수를 초과했습니다.";
+  if (message === "Schedule time must be in the future.") return "스터디 일정은 현재보다 이후여야 합니다.";
+  if (message === "Start time must be in the future.") return "시작 시간은 현재보다 이후여야 합니다.";
+  if (message === "End time must be after start time.") return "종료 시간은 시작 시간보다 이후여야 합니다.";
+  if (message === "Reading room must be at least 20 minutes.") return "모각독은 최소 20분 이상이어야 합니다.";
+  if (message === "Duration is required.") return "진행 시간을 입력해 주세요.";
+  if (message === "Duration must be positive.") return "진행 시간은 20분 이상으로 입력해 주세요.";
+  if (message === "Max participants must be between 2 and 30.") return "최대 인원은 2명에서 30명 사이로 입력해 주세요.";
+  if (message === "Book not found.") return "선택한 책을 찾을 수 없습니다. 다시 검색해 선택해 주세요.";
+  return message || "모각독 방을 만들지 못했습니다.";
 }
 
 export default function ReadingRoomsPage() {
@@ -101,17 +141,13 @@ export default function ReadingRoomsPage() {
   const [selectedBook, setSelectedBook] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [message, setMessage] = useState("");
-  const [form, setForm] = useState(() => {
-    const start = new Date(Date.now() + 60 * 60 * 1000);
-    const end = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    return {
-      title: "",
-      description: "",
-      startAt: toLocalInputValue(start),
-      endAt: toLocalInputValue(end),
-      maxParticipants: "5",
-    };
-  });
+  const [createPending, setCreatePending] = useState(false);
+  const [form, setForm] = useState(() => ({
+    title: "",
+    description: "",
+    schedules: [defaultSchedule()],
+    maxParticipants: "5",
+  }));
 
   async function loadRooms(nextStatus = status, nextBookId = filterBookId) {
     setLoadState("loading");
@@ -179,22 +215,46 @@ export default function ReadingRoomsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateSchedule(index, field, value) {
+    setForm((current) => ({
+      ...current,
+      schedules: current.schedules.map((schedule, scheduleIndex) => (
+        scheduleIndex === index ? { ...schedule, [field]: value } : schedule
+      )),
+    }));
+  }
+
+  function addSchedule() {
+    setForm((current) => ({
+      ...current,
+      schedules: [...current.schedules, defaultSchedule()],
+    }));
+  }
+
+  function removeSchedule(index) {
+    setForm((current) => ({
+      ...current,
+      schedules: current.schedules.filter((_, scheduleIndex) => scheduleIndex !== index),
+    }));
+  }
+
   function validateCreateForm() {
-    const startAt = new Date(form.startAt);
-    const endAt = new Date(form.endAt);
     const maxParticipants = Number(form.maxParticipants);
 
     if (!selectedBook?.id) return "책을 먼저 선택해 주세요.";
     if (!form.title.trim()) return "방 제목을 입력해 주세요.";
-    if (!form.startAt || !form.endAt || Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-      return "시작 시간과 종료 시간을 입력해 주세요.";
-    }
-    if (startAt <= new Date()) return "시작 시간은 현재보다 이후여야 합니다.";
-    if (endAt <= startAt) return "종료 시간은 시작 시간보다 이후여야 합니다.";
+    if (!form.schedules.length) return "요일별 일정을 1개 이상 추가해 주세요.";
 
-    const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60000;
-    if (durationMinutes < 20) return "모각독은 최소 20분 이상이어야 합니다.";
-    if (durationMinutes > 240) return "모각독은 최대 4시간까지 열 수 있습니다.";
+    for (const schedule of form.schedules) {
+      const durationMinutes = Number(schedule.durationMinutes);
+      if (!schedule.dayOfWeek || !schedule.scheduledTime) {
+        return "요일과 시작 시각을 입력해 주세요.";
+      }
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 20) {
+        return "진행 시간은 20분 이상으로 입력해 주세요.";
+      }
+    }
+
     if (!Number.isInteger(maxParticipants) || maxParticipants < 2 || maxParticipants > 30) {
       return "최대 인원은 2명에서 30명 사이로 입력해 주세요.";
     }
@@ -214,6 +274,7 @@ export default function ReadingRoomsPage() {
       return;
     }
     setMessage("");
+    setCreatePending(true);
     try {
       const response = await fetch("/api/reading-rooms", {
         method: "POST",
@@ -225,8 +286,11 @@ export default function ReadingRoomsPage() {
           bookId: Number(selectedBook.id),
           title: form.title.trim(),
           description: form.description.trim() || null,
-          startAt: form.startAt,
-          endAt: form.endAt,
+          schedules: form.schedules.map((schedule) => ({
+            dayOfWeek: Number(schedule.dayOfWeek),
+            scheduledTime: schedule.scheduledTime,
+            durationMinutes: Number(schedule.durationMinutes),
+          })),
           maxParticipants: Number(form.maxParticipants),
           idempotencyKey: `room-${Date.now()}`,
         }),
@@ -238,12 +302,14 @@ export default function ReadingRoomsPage() {
       }
       if (!response.ok) {
         const error = await response.json().catch(() => null);
-        throw new Error(error?.message || "모각독 방을 만들지 못했습니다.");
+        throw new Error(createRoomErrorMessage(error?.message));
       }
       const room = await response.json();
       navigate(`/reading-rooms/${room.id}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "모각독 방을 만들지 못했습니다.");
+    } finally {
+      setCreatePending(false);
     }
   }
 
@@ -259,34 +325,38 @@ export default function ReadingRoomsPage() {
           </Link>
         </div>
 
-        <form className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm" onSubmit={createRoom}>
+        <form className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm" noValidate onSubmit={createRoom}>
           <h2 className="text-lg font-bold text-[#1E2A38]">방 만들기</h2>
-          <BookSearchPanel
-            actionLabel="선택"
-            emptyMessage="검색 결과가 없습니다."
-            onSelect={(book) => {
-              const normalized = normalizeBook(book);
-              setSelectedBook(normalized);
-            }}
-            selectedIds={selectedBook?.id ? [selectedBook.id] : []}
-            selectedLabel="선택됨"
-            title="책 검색"
-          />
-          {selectedBook ? (
-            <div className="mt-4 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-sm text-[#1E2A38]">
-              <p className="font-semibold">{selectedBook.title}</p>
-              <p className="mt-1 text-[#6B7280]">{selectedBook.author}</p>
-              <button
-                className="mt-3 rounded-md border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#6B7280]"
-                type="button"
-                onClick={() => setSelectedBook(null)}
-              >
-                선택 해제
-              </button>
+          <div className="mt-3 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#6B7280]">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate font-semibold text-[#1E2A38]">
+                {selectedBook ? `${selectedBook.title}${selectedBook.author ? ` · ${selectedBook.author}` : ""}` : "함께 읽을 책 선택"}
+              </span>
+              {selectedBook ? (
+                <button
+                  className="shrink-0 rounded-md border border-[#E5E7EB] px-2 py-1 text-xs font-semibold text-[#6B7280]"
+                  type="button"
+                  onClick={() => setSelectedBook(null)}
+                >
+                  해제
+                </button>
+              ) : null}
             </div>
-          ) : (
-            <p className="mt-3 text-sm text-[#6B7280]">책 제목을 검색해 선택해 주세요.</p>
-          )}
+            <BookSearchPanel
+              actionLabel="선택"
+              className="mt-3"
+              emptyMessage="검색 결과가 없습니다."
+              floatingResults
+              onSelect={(book) => {
+                const normalized = normalizeBook(book);
+                setSelectedBook(normalized);
+              }}
+              reserveMessageSpace
+              selectedIds={selectedBook?.id ? [selectedBook.id] : []}
+              selectedLabel="선택됨"
+              title="책 검색"
+            />
+          </div>
           <label className="mt-3 block text-sm font-semibold text-[#1E2A38]">
             제목
             <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" maxLength={100} required value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
@@ -295,20 +365,47 @@ export default function ReadingRoomsPage() {
             설명
             <textarea className="mt-2 min-h-20 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" maxLength={500} value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
           </label>
-          <label className="mt-3 block text-sm font-semibold text-[#1E2A38]">
-            시작 시간
-            <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" required type="datetime-local" value={form.startAt} onChange={(event) => updateForm("startAt", event.target.value)} />
-          </label>
-          <label className="mt-3 block text-sm font-semibold text-[#1E2A38]">
-            종료 시간
-            <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" required type="datetime-local" value={form.endAt} onChange={(event) => updateForm("endAt", event.target.value)} />
-          </label>
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#1E2A38]">요일별 일정</p>
+              <button className="rounded-md border border-[#E5E7EB] px-3 py-2 text-xs font-semibold text-[#1E2A38]" type="button" onClick={addSchedule}>
+                일정 추가
+              </button>
+            </div>
+            <div className="mt-2 space-y-3">
+              {form.schedules.map((schedule, index) => (
+                <div className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3" key={`${index}-${schedule.dayOfWeek}-${schedule.scheduledTime}`}>
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className="block text-xs font-semibold text-[#6B7280]">
+                      요일
+                      <select className="mt-1 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#1E2A38]" value={schedule.dayOfWeek} onChange={(event) => updateSchedule(index, "dayOfWeek", Number(event.target.value))}>
+                        {dayOptions.map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs font-semibold text-[#6B7280]">
+                      시작 시각
+                      <input className="mt-1 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#1E2A38]" required type="time" value={schedule.scheduledTime} onChange={(event) => updateSchedule(index, "scheduledTime", event.target.value)} />
+                    </label>
+                    <label className="block text-xs font-semibold text-[#6B7280]">
+                      진행 시간(분)
+                      <input className="mt-1 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm text-[#1E2A38]" min="20" required type="number" value={schedule.durationMinutes} onChange={(event) => updateSchedule(index, "durationMinutes", event.target.value)} />
+                    </label>
+                    <button className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-xs font-semibold text-[#6B7280] disabled:opacity-50" disabled={form.schedules.length === 1} type="button" onClick={() => removeSchedule(index)}>
+                      일정 삭제
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           <label className="mt-3 block text-sm font-semibold text-[#1E2A38]">
             최대 인원
             <input className="mt-2 w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-sm" max="30" min="2" required type="number" value={form.maxParticipants} onChange={(event) => updateForm("maxParticipants", event.target.value)} />
           </label>
-          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={!selectedBook} type="submit">
-            {accessToken ? "모각독 열기" : "로그인 후 모각독 열기"}
+          <button className="mt-5 w-full rounded-md bg-[#1E2A38] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={createPending} type="submit">
+            {createPending ? "개설 중" : accessToken ? "모각독 열기" : "로그인 후 모각독 열기"}
           </button>
         </form>
       </aside>

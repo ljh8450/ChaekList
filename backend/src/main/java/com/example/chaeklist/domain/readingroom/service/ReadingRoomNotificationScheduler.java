@@ -35,15 +35,17 @@ public class ReadingRoomNotificationScheduler {
 	private void sendStartNotifications() {
 		LocalDateTime now = LocalDateTime.now();
 		List<NotificationTarget> targets = jdbcTemplate.query("""
-				SELECT rr.id AS room_id, participant.user_id, rr.title
-				FROM reading_rooms rr
+				SELECT session.id AS session_id, rr.id AS room_id, participant.user_id, rr.title
+				FROM reading_room_sessions session
+				JOIN reading_rooms rr ON rr.id = session.room_id
 				JOIN reading_room_participants participant ON participant.room_id = rr.id
 				JOIN users u ON u.id = participant.user_id
 				LEFT JOIN user_notification_settings settings ON settings.user_id = participant.user_id
 				WHERE rr.status <> 'CANCELED'
+					AND session.status = 'SCHEDULED'
 					AND rr.visibility = 'PUBLIC'
-					AND rr.start_at >= ?
-					AND rr.start_at < ?
+					AND session.scheduled_start_at >= ?
+					AND session.scheduled_start_at < ?
 					AND participant.status = 'JOINED'
 					AND u.status = 'ACTIVE'
 					AND COALESCE(settings.service_notifications_enabled, TRUE) = TRUE
@@ -54,12 +56,13 @@ public class ReadingRoomNotificationScheduler {
 					)
 				""",
 				(resultSet, rowNumber) -> new NotificationTarget(
+						resultSet.getLong("session_id"),
 						resultSet.getLong("room_id"),
 						resultSet.getLong("user_id"),
 						resultSet.getString("title")
 				),
-				Timestamp.valueOf(now),
-				Timestamp.valueOf(now.plusMinutes(10))
+				Timestamp.valueOf(now.plusMinutes(29)),
+				Timestamp.valueOf(now.plusMinutes(31))
 		);
 		for (NotificationTarget target : targets) {
 			createNotificationIfNew(
@@ -74,14 +77,16 @@ public class ReadingRoomNotificationScheduler {
 	private void sendCheckInNotifications() {
 		LocalDateTime now = LocalDateTime.now();
 		List<NotificationTarget> targets = jdbcTemplate.query("""
-				SELECT rr.id AS room_id, participant.user_id, rr.title
-				FROM reading_rooms rr
+				SELECT session.id AS session_id, rr.id AS room_id, participant.user_id, rr.title
+				FROM reading_room_sessions session
+				JOIN reading_rooms rr ON rr.id = session.room_id
 				JOIN reading_room_participants participant ON participant.room_id = rr.id
 				JOIN users u ON u.id = participant.user_id
 				LEFT JOIN user_notification_settings settings ON settings.user_id = participant.user_id
 				WHERE rr.status <> 'CANCELED'
+					AND session.status = 'ENDED'
 					AND rr.visibility = 'PUBLIC'
-					AND rr.end_at <= ?
+					AND session.scheduled_end_at <= ?
 					AND participant.status = 'JOINED'
 					AND u.status = 'ACTIVE'
 					AND COALESCE(settings.service_notifications_enabled, TRUE) = TRUE
@@ -92,6 +97,7 @@ public class ReadingRoomNotificationScheduler {
 					)
 				""",
 				(resultSet, rowNumber) -> new NotificationTarget(
+						resultSet.getLong("session_id"),
 						resultSet.getLong("room_id"),
 						resultSet.getLong("user_id"),
 						resultSet.getString("title")
@@ -111,9 +117,9 @@ public class ReadingRoomNotificationScheduler {
 	private void createNotificationIfNew(NotificationTarget target, String notificationType, String title, String message) {
 		try {
 			jdbcTemplate.update("""
-					INSERT INTO reading_room_notification_events (room_id, user_id, notification_type, created_at)
-					VALUES (?, ?, ?, CURRENT_TIMESTAMP(6))
-					""", target.roomId(), target.userId(), notificationType);
+					INSERT INTO reading_room_notification_events (session_id, room_id, user_id, notification_type, created_at)
+					VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(6))
+					""", target.sessionId(), target.roomId(), target.userId(), notificationType);
 		} catch (DuplicateKeyException exception) {
 			return;
 		}
@@ -125,6 +131,6 @@ public class ReadingRoomNotificationScheduler {
 				""", target.userId(), target.roomId(), title, message);
 	}
 
-	private record NotificationTarget(long roomId, long userId, String title) {
+	private record NotificationTarget(long sessionId, long roomId, long userId, String title) {
 	}
 }
