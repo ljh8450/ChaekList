@@ -2,6 +2,10 @@
 
 ChaekList는 사용자가 읽을 만한 교양서를 빠르게 발견하고, 읽기 활동을 기록하며, 선택적으로 공개 피드에 독서 활동을 공유할 수 있는 full-stack 웹 애플리케이션입니다.
 
+## PT 자료
+
+[ChaekList-Presentation.pdf](https://github.com/user-attachments/files/29023770/ChaekList-Presentation.pdf)
+
 ## 서비스 개요
 
 ChaekList는 일반 베스트셀러 목록보다 “지금 읽기 좋은 교양서” 탐색에 초점을 둡니다. 비로그인 사용자는 공개 홈, 랭킹, 책 상세, 검색을 이용할 수 있고, 로그인 사용자는 관심 분야, 독서 목적, 읽은 책, 저장한 책을 바탕으로 개인화 추천과 독서 성장 상태를 확인할 수 있습니다.
